@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desk Display Ticker List</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #121212;
+            color: #E0E0E0;
+            margin: 0px 10px;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        h1 {
+            color: #FFF;
+            margin-bottom: 5px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            background-color: #3f8dff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #3076d1;
+        }
+
+        .delete-btn {
+            background-color: #ff3b30;
+            padding: 5px 10px;
+        }
+
+        .delete-btn:hover {
+            background-color: #e53935;
+        }
+
+        .add-row-btn {
+            background-color: #4caf50;
+        }
+
+        .add-row-btn:hover {
+            background-color: #45a049;
+        }
+
+        .refresh-btn {
+            background-color: #ff9800;
+        }
+
+        .refresh-btn:hover {
+            background-color: #fb8c00;
+        }
+
+        .buttons-container {
+            display: flex;
+            justify-content: space-between;
+            width: 75%;
+            max-width: 1000px;
+        }
+
+        /* Table Styling */
+        table {
+            width: 75%;
+            max-width: 1000px;
+            margin: 10px 0px 20px 0px;
+            border-collapse: collapse;
+            background-color: #1f1f1f;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th,
+        td {
+            padding: 5px 10px;
+            text-align: center;
+            border: 1px solid #333;
+        }
+
+        th {
+            background-color: #333;
+            color: #FFF;
+        }
+
+        td {
+            background-color: #222;
+            color: #e0e0e0;
+        }
+
+        td input {
+            background-color: #333;
+            border: none;
+            color: #fff;
+            padding: 5px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        td input:focus {
+            outline: 2px solid #3f8dff;
+        }
+
+        /* Responsive Table */
+        @media (max-width: 768px) {
+            table {
+                width: 100%;
+                margin: 10px 20px 20px 20px;
+            }
+
+            .buttons-container {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Desk Display Ticker List</h1>
+
+    <!-- Buttons -->
+    <div class="buttons-container">
+        <button id="add-row-btn" class="add-row-btn">Add Row</button>
+        <button id="submit-btn">Submit Changes</button>
+        <button id="refresh-btn" class="refresh-btn">Refresh Data</button>
+    </div>
+
+    <!-- Table for displaying data -->
+    <table id="data-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Ticker</th>
+                <th>Source</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Data rows will be inserted here -->
+        </tbody>
+    </table>
+
+    <script>
+
+        const apiUrl = `${window.location.origin}/api/tickerlist`;  // Construct the API URL dynamically based on the current host
+        const submitBtn = document.getElementById('submit-btn');
+        const addRowBtn = document.getElementById('add-row-btn');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const dataTableBody = document.querySelector('#data-table tbody');
+
+        // Fetch data from API and populate the table
+        async function fetchData() {
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                populateTable(data);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        // Populate table with data
+        function populateTable(data) {
+            dataTableBody.innerHTML = ''; // Clear previous data
+            data.forEach((item, index) => {
+                const row = document.createElement('tr');
+
+                // ID (row number based on current index)
+                const idCell = document.createElement('td');
+                idCell.textContent = index + 1; // Row number starting from 1
+                row.appendChild(idCell);
+
+                // Ticker (editable)
+                const tickerCell = document.createElement('td');
+                const tickerInput = document.createElement('input');
+                tickerInput.type = 'text';
+                tickerInput.value = item.ticker;
+                tickerCell.appendChild(tickerInput);
+                row.appendChild(tickerCell);
+
+                // Source (editable)
+                const sourceCell = document.createElement('td');
+                const sourceInput = document.createElement('input');
+                sourceInput.type = 'text';
+                sourceInput.value = item.source;
+                sourceCell.appendChild(sourceInput);
+                row.appendChild(sourceCell);
+
+                // Actions (Delete button)
+                const actionsCell = document.createElement('td');
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Delete';
+                deleteButton.classList.add('delete-btn');
+                deleteButton.onclick = () => deleteRow(row);
+                actionsCell.appendChild(deleteButton);
+                row.appendChild(actionsCell);
+
+                dataTableBody.appendChild(row);
+            });
+        }
+
+        // Delete a row from the table
+        function deleteRow(row) {
+            row.remove();
+        }
+
+        // Add a new row to the table with auto-generated ID
+        function addRow() {
+            const row = document.createElement('tr');
+            const rowCount = dataTableBody.rows.length + 1;  // Set row ID based on current count
+
+            // ID (auto-generated row number)
+            const idCell = document.createElement('td');
+            idCell.textContent = rowCount;
+            row.appendChild(idCell);
+
+            // Ticker (editable)
+            const tickerCell = document.createElement('td');
+            const tickerInput = document.createElement('input');
+            tickerInput.type = 'text';
+            tickerInput.value = ''; // Empty value to start
+            tickerCell.appendChild(tickerInput);
+            row.appendChild(tickerCell);
+
+            // Source (editable)
+            const sourceCell = document.createElement('td');
+            const sourceInput = document.createElement('input');
+            sourceInput.type = 'text';
+            sourceInput.value = ''; // Empty value to start
+            sourceCell.appendChild(sourceInput);
+            row.appendChild(sourceCell);
+
+            // Actions (Delete button)
+            const actionsCell = document.createElement('td');
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = 'Delete';
+            deleteButton.classList.add('delete-btn');
+            deleteButton.onclick = () => deleteRow(row);
+            actionsCell.appendChild(deleteButton);
+            row.appendChild(actionsCell);
+
+            dataTableBody.appendChild(row);
+        }
+
+        // Convert table data to CSV format
+        function tableToCSV() {
+            const rows = dataTableBody.querySelectorAll('tr');
+            let csvContent = "ID,Ticker,Source\n";
+
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                const id = cells[0].textContent;
+                const ticker = cells[1].querySelector('input').value;
+                const source = cells[2].querySelector('input').value;
+
+                const rowData = `${id},${ticker},${source}\n`;
+                csvContent += rowData;
+            });
+
+            return csvContent;
+        }
+
+        // Submit data as CSV to the API
+        async function submitData() {
+            const csvData = tableToCSV();
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/csv'
+                    },
+                    body: csvData
+                });
+
+                if (response.ok) {
+                    alert('Data submitted successfully!');
+                } else {
+                    alert('Failed to submit data.');
+                }
+            } catch (error) {
+                console.error('Error submitting data:', error);
+            }
+        }
+
+        // Refresh the data by fetching it again
+        async function refreshData() {
+            await fetchData();
+            alert('Table refreshed with the latest data!');
+        }
+
+        // Add event listeners
+        addRowBtn.addEventListener('click', addRow);
+        submitBtn.addEventListener('click', submitData);
+        refreshBtn.addEventListener('click', refreshData);
+
+        // Initialize the page by fetching data
+        fetchData();
+    </script>
+
+</body>
+
+</html>
