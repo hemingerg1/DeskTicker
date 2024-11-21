@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "author": "Uri Shaked",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 96,
+      "left": -158.36,
+      "attrs": { "fastTLS": "1" }
+    },
+    {
+      "type": "wokwi-ili9341",
+      "id": "lcd1",
+      "top": 34.2,
+      "left": 88.1,
+      "rotate": 90,
+      "attrs": {}
+    },
+    { "type": "wokwi-microsd-card", "id": "sd1", "top": 163.43, "left": -316.73, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "lcd1:GND", "esp:GND.2", "black", [ "h-19.2", "v91.54" ] ],
+    [ "esp:5V", "lcd1:VCC", "red", [ "h-21.83", "v-206.3", "h201.6", "v48.5" ] ],
+    [ "lcd1:CS", "esp:15", "violet", [ "h-67.2", "v105.6" ] ],
+    [ "sd1:GND", "esp:GND.1", "black", [ "h38.4", "v57.71" ] ],
+    [ "sd1:VCC", "esp:5V", "red", [ "h28.8", "v86.54" ] ],
+    [ "sd1:CS", "esp:5", "green", [ "v105.66", "h201.6", "v-124.8" ] ],
+    [ "sd1:DI", "esp:23", "green", [ "h19.2", "v105.51", "h201.6", "v-192" ] ],
+    [ "sd1:SCK", "esp:18", "gray", [ "h0" ] ],
+    [ "sd1:DO", "esp:19", "orange", [ "h0" ] ],
+    [ "lcd1:SCK", "esp:14", "green", [ "h-28.8", "v115.19", "h-172.8", "v-86.4" ] ],
+    [ "lcd1:MISO", "esp:12", "blue", [ "v143.99", "h-211.2", "v-124.8" ] ],
+    [ "lcd1:MOSI", "esp:13", "green", [ "h-19.2", "v115.19", "h-172.95" ] ],
+    [ "lcd1:D/C", "esp:2", "orange", [ "h-48", "v76.8" ] ]
+  ],
+  "dependencies": {}
+}

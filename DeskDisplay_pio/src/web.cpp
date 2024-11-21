@@ -2,53 +2,54 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WebServer.h>
+// #include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 #include <FS.h>
 #include <SD.h>
 
 #include "myUtils.h"
 
-WebServer server(80);
+AsyncWebServer server(80);
 
 // Function to serve the HTML file from SD card
-void handleRoot()
+void handleRoot(AsyncWebServerRequest *request)
 {
     xSemaphoreTake(SDmutex, portMAX_DELAY);
     File file = SD.open(htmlFilePath);
     if (!file)
     {
-        server.send(500, "text/plain", "Failed to read HTML file from SD card.");
+        request->send(500, "text/plain", "Failed to read HTML file from SD card.");
         xSemaphoreGive(SDmutex);
         return;
     }
-    server.streamFile(file, "text/html");
+    request->send(file, "text/html");
     file.close();
     xSemaphoreGive(SDmutex);
 }
 
 // Function to get the ticker list (GET /api/tickerlist)
-void handleApiGet()
+void handleApiGet(AsyncWebServerRequest *request)
 {
     xSemaphoreTake(SDmutex, portMAX_DELAY);
     File file = SD.open(tickerListFilePath);
     if (!file)
     {
-        server.send(500, "text/plain", "Failed to open ticker list CSV file.");
+        request->send(500, "text/plain", "Failed to open ticker list CSV file.");
         xSemaphoreGive(SDmutex);
         return;
     }
     // Send the CSV data
-    server.streamFile(file, "text/csv");
+    request->send(file, "text/csv");
     file.close();
     xSemaphoreGive(SDmutex);
 }
 
 // Function to handle POST requests (POST /api/tickerlist)
-void handleApiPost()
+void handleApiPost(AsyncWebServerRequest *request)
 {
-    if (server.method() != HTTP_POST)
+    if (request->method() != HTTP_POST)
     {
-        server.send(405, "text/plain", "Method Not Allowed");
+        request->send(405, "text/plain", "Method Not Allowed");
         return;
     }
     xSemaphoreTake(SDmutex, portMAX_DELAY);
@@ -56,28 +57,29 @@ void handleApiPost()
     File file = SD.open(tickerListFilePath, FILE_WRITE);
     if (!file)
     {
-        server.send(500, "text/plain", "Failed to open CSV file for writing.");
+        request->send(500, "text/plain", "Failed to open CSV file for writing.");
         xSemaphoreGive(SDmutex);
         return;
     }
     // Read the incoming CSV data from the POST request
-    String csvData = server.arg("plain");
+    String csvData = request->arg("plain");
     // Write the received CSV data to the file
     file.print(csvData);
     file.close();
     xSemaphoreGive(SDmutex);
-    server.send(200, "text/plain", "CSV data saved successfully.");
+    request->send(200, "text/plain", "CSV data saved successfully.");
 }
 
 // Called when the WebServer was requested to list all existing files in the filesystem. JSON array with file information is returned.
-void handleListFiles()
+void handleListFiles(AsyncWebServerRequest *request)
 {
-    server.sendHeader("Cache-Control", "no-cache");
-    server.send(200, "text/javascript; charset=utf-8", listDir(SD, "/"));
+    AsyncWebServerResponse *response = request->beginResponse(200, "text/javascript; charset=utf-8", listDir(SD, "/"));
+    response->addHeader("Cache-Control", "no-cache");
+    request->send(response);
 }
 
 // This function is called when the sysInfo service was requested.
-void handleSysInfo()
+void handleSysInfo(AsyncWebServerRequest *request)
 {
     String result;
 
@@ -93,8 +95,9 @@ void handleSysInfo()
     xSemaphoreGive(SDmutex);
     result += "}";
 
-    server.sendHeader("Cache-Control", "no-cache");
-    server.send(200, "text/javascript; charset=utf-8", result);
+    AsyncWebServerResponse *response = request->beginResponse(200, "text/javascript; charset=utf-8", result);
+    response->addHeader("Cache-Control", "no-cache");
+    request->send(response);
 }
 
 // used for url not found
@@ -120,18 +123,16 @@ void webTask(void *parameters)
     server.on("/api/sysinfo", HTTP_GET, handleSysInfo);     // Get system information
 
     // web page not found
-    server.onNotFound([]()
-                      { server.send(404, "text/html", FPSTR(notFoundContent)); });
+    server.onNotFound([](AsyncWebServerRequest *request)
+                      { request->send(404, "text/html", FPSTR(notFoundContent)); });
 
-    server.enableCORS(false);
+    // server.enableCORS(false);
 
     server.begin();
     Serial.printf("Webserver started at <http://%s> or <http://%s>", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
     for (;;)
     {
-
-        server.handleClient();
         vTaskDelay(100);
     }
 }

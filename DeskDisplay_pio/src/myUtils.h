@@ -19,6 +19,7 @@ String listDir(fs::FS &fs, const char *dirname);
 void printSdUssage(void);
 
 /********* Data Utils *********/
+#define maxTickers 25
 extern bool updateTickerList;
 struct ticker
 {
@@ -31,6 +32,6 @@ struct ticker
     {
         return String(id) + "," + symbol + "," + disc + "," + source;
     }
-} extern tickerList[20];
+} extern tickerList[maxTickers];
 
 #endif
