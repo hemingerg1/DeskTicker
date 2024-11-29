@@ -6,6 +6,7 @@
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <SD.h>
+#include <ESP32Time.h>
 
 #include "secrets.h"
 #include "myUtils.h"
@@ -15,10 +16,30 @@
 
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"
 
+TaskHandle_t uiTaskHandle = NULL;
+TaskHandle_t dataTaskHandle = NULL;
+TaskHandle_t webTaskHandle = NULL;
+TaskHandle_t highwaterTaskHandle = NULL;
+
+// define data types for the highwater mark timer
+TimerHandle_t highwaterTimer;
+BaseType_t hwTimerStarted;
+void highwaterTask(void *pvParameters);
+void hwCallback(TimerHandle_t xTimer);
+
+SET_LOOP_TASK_STACK_SIZE(4 * 1024);
+
 void setup()
 {
   Serial.begin(115200);
   Serial.println("Booting...");
+
+  SDmutex = xSemaphoreCreateMutex();
+  if (SDmutex != NULL)
+  {
+    xSemaphoreGive(SDmutex);
+    Serial.println("SDmutex created");
+  }
 
   if (!SD.begin(5)) // maybe (5)
   {
@@ -28,16 +49,54 @@ void setup()
   printSdUssage();
 
   wificon();
-  Serial.println("setting time...");
-  configTzTime(TIMEZONE, "pool.ntp.org");
+  timeSync(TIMEZONE, "time1.google.com", "time2.google.com");
 
-  SDmutex = xSemaphoreCreateMutex();
+  // create and start a timer to trigger the highwater task every 60 seconds
+  highwaterTimer = xTimerCreate("Highwater Timer", pdMS_TO_TICKS(60000), pdTRUE, 0, hwCallback);
+  hwTimerStarted = xTimerStart(highwaterTimer, 0);
 
-  xTaskCreatePinnedToCore(uiTask, "uiTask", 1024 * 4, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(dataTask, "dataTask", 1024 * 4, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(webTask, "webTask", 1024 * 4, NULL, 1, NULL, 1);
+  // create tasks
+  xTaskCreatePinnedToCore(uiTask, "uiTask", 8192, NULL, 1, &uiTaskHandle, 1);
+  xTaskCreatePinnedToCore(dataTask, "dataTask", 8192, NULL, 1, &dataTaskHandle, 1);
+  xTaskCreatePinnedToCore(webTask, "webTask", 8192, NULL, 1, &webTaskHandle, 1);
+  xTaskCreatePinnedToCore(highwaterTask, "highwaterTask", 1280, NULL, 1, &highwaterTaskHandle, 1);
+
+  /*
+  Serial.print("setup highwater: ");
+  Serial.println(uxTaskGetStackHighWaterMark(NULL));
+  */
 }
 
 void loop()
 {
+}
+
+void highwaterTask(void *pvParameters)
+{
+  while (1)
+  {
+    vTaskSuspend(NULL); // suspend this task until the timer triggers
+    Serial.print("\n-------- High Water Marks --------\n");
+    Serial.println("(minimum free stack space)");
+    Serial.print("uiTask : ");
+    Serial.println(uxTaskGetStackHighWaterMark(uiTaskHandle));
+    Serial.print("dataTask : ");
+    Serial.println(uxTaskGetStackHighWaterMark(dataTaskHandle));
+    Serial.print("webTask : ");
+    Serial.println(uxTaskGetStackHighWaterMark(webTaskHandle));
+    Serial.print("highwaterTask : ");
+    Serial.println(uxTaskGetStackHighWaterMark(NULL));
+    Serial.println("----------------------------------");
+    Serial.print("free heap space: ");
+    Serial.println(ESP.getFreeHeap());
+    Serial.print("minimum free heap space: ");
+    Serial.println(ESP.getMinFreeHeap());
+    Serial.println("----------------------------------\n");
+    Serial.flush();
+  }
+}
+
+void hwCallback(TimerHandle_t xTimer)
+{
+  vTaskResume(highwaterTaskHandle); // run the highwater program once
 }

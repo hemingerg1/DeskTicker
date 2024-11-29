@@ -6,12 +6,13 @@
 
 void uiTask(void *parameters)
 {
+    Serial.println("Starting uiTask");
     // smartdisplay_init();
     //  auto display = lv_display_get_default();
 
     for (;;)
     {
-        Serial.println("Running uiTask");
+
         vTaskDelay(1000);
     }
 }
