@@ -40,6 +40,12 @@ void setup()
     xSemaphoreGive(SDmutex);
     Serial.println("SDmutex created");
   }
+  TickListmutex = xSemaphoreCreateMutex();
+  if (TickListmutex != NULL)
+  {
+    xSemaphoreGive(TickListmutex);
+    Serial.println("TickListmutex created");
+  }
 
   if (!SD.begin(5)) // maybe (5)
   {

@@ -10,6 +10,55 @@
 
 AsyncWebServer server(80);
 
+// used for url not found
+static const char notFoundContent[] PROGMEM = R""""(
+<html>
+<head>
+  <title>Resource not found</title>
+</head>
+<body>
+  <p>The page was not found.</p>
+  <p><a href="/">Home</a></p>
+</body>
+)"""";
+
+/***********************************************************************/
+/***************************  FreeRTOS task  ***************************/
+/***********************************************************************/
+
+void webTask(void *parameters)
+{
+    Serial.println("Starting webserver task.....");
+
+    server.on("/", HTTP_GET, handleRoot);                 // Serve the HTML file
+    server.on("/api/tickerlist", HTTP_GET, handleApiGet); // Get the ticker list file
+    // server.on("/api/tickerlist", HTTP_POST, handleApiPost); // Save new ticker list data
+    server.onRequestBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
+                         {if (request->url() == "/api/tickerlist")
+                            {
+                                handleApiPost(request, data, len, index, total);
+                            } });
+
+    server.on("/api/list", HTTP_GET, handleListFiles);  // List all files in the filesystem
+    server.on("/api/sysinfo", HTTP_GET, handleSysInfo); // Get system information
+
+    // web page not found
+    server.onNotFound([](AsyncWebServerRequest *request)
+                      { request->send(404, "text/html", FPSTR(notFoundContent)); });
+
+    server.begin();
+    Serial.printf("**** Webserver started at <http://%s> or <http://%s> ****\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+
+    while (1)
+    {
+        vTaskDelay(2000);
+    }
+}
+
+/***********************************************************************/
+/*************************  Helper Functions  **************************/
+/***********************************************************************/
+
 // Function to serve the HTML file from SD card
 void handleRoot(AsyncWebServerRequest *request)
 {
@@ -115,45 +164,4 @@ void handleSysInfo(AsyncWebServerRequest *request)
     AsyncWebServerResponse *response = request->beginResponse(200, "text/javascript; charset=utf-8", result);
     response->addHeader("Cache-Control", "no-cache");
     request->send(response);
-}
-
-// used for url not found
-static const char notFoundContent[] PROGMEM = R""""(
-<html>
-<head>
-  <title>Resource not found</title>
-</head>
-<body>
-  <p>The page was not found.</p>
-  <p><a href="/">Home</a></p>
-</body>
-)"""";
-
-void webTask(void *parameters)
-{
-    Serial.println("Starting webserver task.....");
-
-    server.on("/", HTTP_GET, handleRoot);                 // Serve the HTML file
-    server.on("/api/tickerlist", HTTP_GET, handleApiGet); // Get the ticker list file
-    // server.on("/api/tickerlist", HTTP_POST, handleApiPost); // Save new ticker list data
-    server.onRequestBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
-                         {if (request->url() == "/api/tickerlist")
-                            {
-                                handleApiPost(request, data, len, index, total);
-                            } });
-
-    server.on("/api/list", HTTP_GET, handleListFiles);  // List all files in the filesystem
-    server.on("/api/sysinfo", HTTP_GET, handleSysInfo); // Get system information
-
-    // web page not found
-    server.onNotFound([](AsyncWebServerRequest *request)
-                      { request->send(404, "text/html", FPSTR(notFoundContent)); });
-
-    server.begin();
-    Serial.printf("**** Webserver started at <http://%s> or <http://%s> ****\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
-
-    while (1)
-    {
-        vTaskDelay(1000);
-    }
 }

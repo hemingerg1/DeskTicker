@@ -16,10 +16,71 @@
 
 MyTable listTable(tickerListFilePath);
 
-uint priceHistLen = 30; // in days
+ushort priceHistLen = 30;  // in days
+ushort updateInterval = 5; // in minutes
+bool eodUpdate = false;
+
 const char *scURLBase = "stockcharts.com";
-const char *scURLPath = "/quotebrain/historyandquote/d";
+const char *scHistURLPath = "/quotebrain/historyandquote/d";
+const char *scTodayURLPath = "/quotebrain/quote";
 const char *userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0";
+
+/***********************************************************************/
+/***************************  FreeRTOS task  ***************************/
+/***********************************************************************/
+void dataTask(void *parameters)
+{
+    vTaskDelay(1000);
+    Serial.println("Starting dataTask");
+
+    unsigned long lastUpdate = 0;
+
+    while (1)
+    {
+        // check if the market is open
+        isMarketOpen();
+
+        // updates data if ticker list is changed
+        if (updateTickerList)
+        {
+            Serial.println("Updating ticker list and data");
+            tickerListUpdate();
+            updateTickerList = false;
+            vTaskDelay(5000);
+            for (int i = 0; i < numTickers; i++)
+            {
+                getTodayData(i);
+                vTaskDelay(5000);
+            }
+            lastUpdate = millis();
+        }
+
+        if (marketOpen)
+        {
+            // updates the current price every <updateInterval> minutes
+            if (millis() - lastUpdate > updateInterval * 60000 || millis() < lastUpdate)
+            {
+                for (int i = 0; i < numTickers; i++)
+                {
+                    getTodayData(i);
+                    vTaskDelay(5000);
+                }
+                lastUpdate = millis();
+            }
+        }
+        else if (eodUpdate)
+        {
+            // update csv files at the end of the day
+            getEODData();
+        }
+
+        vTaskDelay(5000);
+    }
+}
+
+/***********************************************************************/
+/*************************  Helper Functions  **************************/
+/***********************************************************************/
 
 // function to load tickerList from SD card csv file
 void loadTickers(void)
@@ -30,6 +91,7 @@ void loadTickers(void)
         // listTable.printTable();
         numTickers = listTable.countRows() - 1;
         Serial.printf("Number of Tickers: %d\n", numTickers);
+        xSemaphoreTake(TickListmutex, portMAX_DELAY);
         Serial.println("Ticker List:");
         for (int row = 0; row < numTickers; row++)
         {
@@ -39,6 +101,7 @@ void loadTickers(void)
             // Print the ticker information
             Serial.printf("%d, %s, %s\n", tickerList[row].id, tickerList[row].symbol.c_str(), tickerList[row].disc.c_str());
         }
+        xSemaphoreGive(TickListmutex);
     }
     else
     {
@@ -60,6 +123,7 @@ void tickerListUpdate(void)
         return;
     }
     // check if files exist in ticker list
+    xSemaphoreTake(TickListmutex, portMAX_DELAY);
     while (File entry = dir.openNextFile())
     {
         String filename = entry.name();
@@ -110,7 +174,7 @@ void tickerListUpdate(void)
             Serial.print("No CSV found for symbol: ");
             Serial.println(tickerList[i].symbol);
             String csvData = "";
-            csvData = getCSVData(tickerList[i], priceHistLen);
+            csvData = getHistoricData(tickerList[i], priceHistLen);
             if (csvData == "")
             {
                 Serial.println("Failed to get data for symbol: " + tickerList[i].symbol);
@@ -134,6 +198,7 @@ void tickerListUpdate(void)
         }
     }
     dir.close();
+    xSemaphoreGive(TickListmutex);
     xSemaphoreGive(SDmutex);
 }
 
@@ -161,7 +226,7 @@ String getStartDate(int length)
 }
 
 // Function to get price data from StockCharts.com and save to CSV file
-String getCSVData(ticker ticker, int length)
+String getHistoricData(ticker ticker, int length)
 {
     Serial.println("Getting data for " + ticker.symbol);
     WiFiClientSecure client;
@@ -178,7 +243,7 @@ String getCSVData(ticker ticker, int length)
     String queryParams = String("?symbol=") + ticker.symbol + "&start=" + getStartDate(length);
 
     // Construct the HTTP request
-    String request = String("GET ") + scURLPath + queryParams + " HTTP/1.0\r\n" +
+    String request = String("GET ") + scHistURLPath + queryParams + " HTTP/1.0\r\n" +
                      "Host: " + scURLBase + "\r\n" +
                      "User-Agent: " + userAgent + "\r\n" +
                      "Connection: close\r\n\r\n";
@@ -250,27 +315,139 @@ String getCSVData(ticker ticker, int length)
     return csvData;
 }
 
-// FreeRTOS task
-void dataTask(void *parameters)
+// Function to get todays price data from StockCharts.com
+void getTodayData(int tickerNum)
 {
-    Serial.println("Starting dataTask");
-
-    vTaskDelay(5000);
-    /*
-    ticker t;
-    t.symbol = "AAPL";
-    getData(t, 30);
-    */
-
-    while (1)
+    xSemaphoreTake(TickListmutex, portMAX_DELAY);
+    Serial.println("Getting todays price for " + tickerList[tickerNum].symbol);
+    WiFiClientSecure client;
+    client.setInsecure();
+    client.setTimeout(10000);
+    if (!client.connect(scURLBase, 443))
     {
-        if (updateTickerList)
-        {
-            Serial.println("Updating ticker list and data");
-            tickerListUpdate();
-            updateTickerList = false;
-        }
-
-        vTaskDelay(5000);
+        Serial.println("Connection failed!");
+        client.stop();
+        return;
     }
+    // Serial.println("Connected to " + String(scURLBase));
+    //  build query string
+    String queryParams = String("?symbol=") + tickerList[tickerNum].symbol + "&format=json";
+
+    // Construct the HTTP request
+    String request = String("GET ") + scTodayURLPath + queryParams + " HTTP/1.0\r\n" +
+                     "Host: " + scURLBase + "\r\n" +
+                     "User-Agent: " + userAgent + "\r\n" +
+                     "Connection: close\r\n\r\n";
+
+    // Send the request
+    client.print(request);
+    // Serial.println(request);
+
+    // Print HTTP status
+    char status[32] = {0};
+    client.readBytesUntil('\r', status, sizeof(status));
+    // Serial.print("Status: ");
+    // Serial.println(status);
+
+    // Skip HTTP headers
+    char endOfHeaders[] = "\r\n\r\n";
+    if (!client.find(endOfHeaders))
+    {
+        Serial.println(F("Invalid response"));
+        client.stop();
+        return;
+    }
+
+    // Create a filter to extract the desired fields
+    JsonDocument filter;
+    filter[0]["close"] = true;
+    filter[0]["closeYesterday"] = true;
+    // Parse the JSON response
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, client, DeserializationOption::Filter(filter));
+
+    client.stop();
+
+    if (error)
+    {
+        Serial.print("Failed to parse JSON: ");
+        Serial.println(error.c_str());
+        return;
+    }
+    // Print the JSON document
+    // serializeJson(doc, Serial);
+
+    float todaysClose = doc[0]["close"].as<float>();
+    float CloseYesterday = doc[0]["closeYesterday"].as<float>();
+    tickerList[tickerNum].price = todaysClose;
+    tickerList[tickerNum].change = todaysClose - CloseYesterday;
+    tickerList[tickerNum].changePct = (tickerList[tickerNum].change / CloseYesterday) * 100;
+    Serial.printf("Ticker: %s, Price: %.2f, Change: %.2f, ChangePct: %.2f%%\n", tickerList[tickerNum].symbol.c_str(), tickerList[tickerNum].price, tickerList[tickerNum].change, tickerList[tickerNum].changePct);
+
+    xSemaphoreGive(TickListmutex);
+}
+
+// Function to check if market is open
+void isMarketOpen(void)
+{
+    if (rtc.getDayofWeek() >= 1 && rtc.getDayofWeek() <= 5)
+    {
+        if (rtc.getHour() == 9 && rtc.getMinute() >= 30)
+        {
+            marketOpen = true;
+        }
+        else if (rtc.getHour() == 16 && rtc.getMinute() <= 10)
+        {
+            marketOpen = true;
+            eodUpdate = true;
+        }
+        else if (rtc.getHour() > 9 && rtc.getHour() < 16)
+        {
+            marketOpen = true;
+        }
+        else
+        {
+            marketOpen = false;
+        }
+    }
+    else
+    {
+        marketOpen = false;
+    }
+}
+
+// Function to update data csv files at end of day
+void getEODData(void)
+{
+    Serial.println("Getting EOD data");
+    xSemaphoreTake(SDmutex, portMAX_DELAY);
+    xSemaphoreTake(TickListmutex, portMAX_DELAY);
+    for (int i = 0; i < numTickers; i++)
+    {
+        String csvData = "";
+        csvData = getHistoricData(tickerList[i], priceHistLen);
+        if (csvData == "")
+        {
+            Serial.println("Failed to get data for symbol: " + tickerList[i].symbol);
+        }
+        else
+        {
+            File file = SD.open("/data/" + tickerList[i].symbol + ".csv", FILE_WRITE);
+            if (!file)
+            {
+                Serial.println("Failed to open file for writing");
+            }
+            else
+            {
+                // Write the received CSV data to the file
+                file.print(csvData);
+                file.close();
+                Serial.println("Data saved to /data/" + tickerList[i].symbol + ".csv");
+            }
+        }
+        vTaskDelay(5000); // Delay to avoid sending too many requ
+    }
+    xSemaphoreGive(TickListmutex);
+    xSemaphoreGive(SDmutex);
+    eodUpdate = false;
 }

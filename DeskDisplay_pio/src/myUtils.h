@@ -11,36 +11,49 @@
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 
-/********* ESP Utils *********/
+/***********************************************************************/
+/*****************************  ESP Utils  *****************************/
+/***********************************************************************/
 extern ESP32Time rtc;
 void wificon(void);
 void timeSync(const char *tzInfo, const char *ntpServer1, const char *ntpServer2);
 void reboot(void);
 
-/********* SD Card Utils **********/
+/***********************************************************************/
+/*****************************  SD card Utils  *************************/
+/***********************************************************************/
 extern SemaphoreHandle_t SDmutex; // SemaphoreHandle_t
-// Path to files on the SD card
-#define htmlFilePath "/index.html"
-#define tickerListFilePath "/tickerList.csv"
 
-String listDir(fs::FS &fs, const char *dirname);
+// Path to files on the SD card
+extern const char *htmlFilePath;
+extern const char *tickerListFilePath;
+
+String
+listDir(fs::FS &fs, const char *dirname);
 void printSdUssage(void);
 
-/********* Data Utils *********/
-#define maxTickers 25
-extern int numTickers;
-#define tickerListColNum 3
+/***********************************************************************/
+/*****************************  Data Utils  ****************************/
+/***********************************************************************/
+extern SemaphoreHandle_t TickListmutex;
+extern const ushort maxTickers;
+extern ushort numTickers;
+extern const ushort tickerListColNum;
 extern bool updateTickerList;
+extern bool marketOpen;
 struct ticker
 {
-    unsigned short id;
+    ushort id;
     String symbol;
     String disc;
+    float price;
+    float change;
+    float changePct;
 
     String describeTicker()
     {
         return String(id) + "," + symbol + "," + disc;
     }
-} extern tickerList[maxTickers];
+} extern tickerList[];
 
 #endif

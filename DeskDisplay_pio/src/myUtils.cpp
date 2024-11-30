@@ -8,7 +8,9 @@
 #include <FS.h>
 #include <SD.h>
 
-/********* ESP Utils *********/
+/***********************************************************************/
+/*****************************  ESP Utils  *****************************/
+/***********************************************************************/
 ESP32Time rtc(0);
 
 void wificon(void)
@@ -71,9 +73,16 @@ void reboot(void)
     ESP.restart();
 }
 
-/********* SD Card Utils **********/
+/***********************************************************************/
+/*****************************  SD card Utils  *************************/
+/***********************************************************************/
 SemaphoreHandle_t SDmutex = NULL;
-String listDir(fs::FS &fs, const char *dirname)
+
+const char *htmlFilePath = "/index.html";
+const char *tickerListFilePath = "/tickerList.csv";
+
+String
+listDir(fs::FS &fs, const char *dirname)
 {
     Serial.printf("Listing directory: %s\n", dirname);
     String result;
@@ -162,7 +171,13 @@ void printSdUssage(void)
     Serial.println("--------------------------------");
 }
 
-/********* Data Utils *********/
+/***********************************************************************/
+/*****************************  Data Utils  ****************************/
+/***********************************************************************/
+SemaphoreHandle_t TickListmutex = NULL;
+const ushort maxTickers = 30;
+const ushort tickerListColNum = 3;
 bool updateTickerList = true;
-int numTickers = 0;
+ushort numTickers = 0;
+bool marketOpen = false;
 ticker tickerList[maxTickers];
