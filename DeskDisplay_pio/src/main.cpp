@@ -62,9 +62,9 @@ void setup()
   hwTimerStarted = xTimerStart(highwaterTimer, 0);
 
   // create tasks
-  xTaskCreatePinnedToCore(uiTask, "uiTask", 8192, NULL, 1, &uiTaskHandle, 1);
-  xTaskCreatePinnedToCore(dataTask, "dataTask", 8192, NULL, 1, &dataTaskHandle, 1);
-  xTaskCreatePinnedToCore(webTask, "webTask", 8192, NULL, 1, &webTaskHandle, 1);
+  xTaskCreatePinnedToCore(uiTask, "uiTask", 6144, NULL, 1, &uiTaskHandle, 1);
+  xTaskCreatePinnedToCore(dataTask, "dataTask", 6144, NULL, 1, &dataTaskHandle, 1);
+  xTaskCreatePinnedToCore(webTask, "webTask", 6144, NULL, 1, &webTaskHandle, 1);
   xTaskCreatePinnedToCore(highwaterTask, "highwaterTask", 1280, NULL, 1, &highwaterTaskHandle, 1);
 
   /*

@@ -231,7 +231,7 @@ String getHistoricData(ticker ticker, int length)
     Serial.println("Getting data for " + ticker.symbol);
     WiFiClientSecure client;
     client.setInsecure();
-    client.setTimeout(10000);
+    client.setTimeout(30);
     if (!client.connect(scURLBase, 443))
     {
         Serial.println("Connection failed!");
@@ -322,7 +322,7 @@ void getTodayData(int tickerNum)
     Serial.println("Getting todays price for " + tickerList[tickerNum].symbol);
     WiFiClientSecure client;
     client.setInsecure();
-    client.setTimeout(10000);
+    client.setTimeout(30);
     if (!client.connect(scURLBase, 443))
     {
         Serial.println("Connection failed!");
