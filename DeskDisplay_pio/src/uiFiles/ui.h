@@ -26,6 +26,18 @@ extern lv_obj_t * ui_conSym;
 extern lv_obj_t * ui_labSYMBOL;
 extern lv_obj_t * ui_labDESC;
 extern lv_obj_t * ui_conPrice;
+extern lv_obj_t * ui_labPRICE;
+void ui_event_butNext(lv_event_t * e);
+extern lv_obj_t * ui_butNext;
+extern lv_obj_t * ui_Label2;
+// CUSTOM VARIABLES
+
+// SCREEN: ui_Screen2
+void ui_Screen2_screen_init(void);
+extern lv_obj_t * ui_Screen2;
+void ui_event_butBack(lv_event_t * e);
+extern lv_obj_t * ui_butBack;
+extern lv_obj_t * ui_Label1;
 // CUSTOM VARIABLES
 
 // EVENTS

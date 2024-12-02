@@ -379,10 +379,17 @@ void getTodayData(int tickerNum)
 
     float todaysClose = doc[0]["close"].as<float>();
     float CloseYesterday = doc[0]["closeYesterday"].as<float>();
-    tickerList[tickerNum].price = todaysClose;
-    tickerList[tickerNum].change = todaysClose - CloseYesterday;
-    tickerList[tickerNum].changePct = (tickerList[tickerNum].change / CloseYesterday) * 100;
-    Serial.printf("Ticker: %s, Price: %.2f, Change: %.2f, ChangePct: %.2f%%\n", tickerList[tickerNum].symbol.c_str(), tickerList[tickerNum].price, tickerList[tickerNum].change, tickerList[tickerNum].changePct);
+    if (todaysClose != 0 && CloseYesterday != 0)
+    {
+        tickerList[tickerNum].price = todaysClose;
+        tickerList[tickerNum].change = todaysClose - CloseYesterday;
+        tickerList[tickerNum].changePct = (tickerList[tickerNum].change / CloseYesterday) * 100;
+        Serial.printf("Ticker: %s, Price: %.2f, Change: %.2f, ChangePct: %.2f%%\n", tickerList[tickerNum].symbol.c_str(), tickerList[tickerNum].price, tickerList[tickerNum].change, tickerList[tickerNum].changePct);
+    }
+    else
+    {
+        Serial.println("Failed to get todays price for " + tickerList[tickerNum].symbol);
+    }
 
     xSemaphoreGive(TickListmutex);
 }

@@ -28,8 +28,7 @@ extern SemaphoreHandle_t SDmutex; // SemaphoreHandle_t
 extern const char *htmlFilePath;
 extern const char *tickerListFilePath;
 
-String
-listDir(fs::FS &fs, const char *dirname);
+String listDir(fs::FS &fs, const char *dirname);
 void printSdUssage(void);
 
 /***********************************************************************/

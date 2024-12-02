@@ -17,6 +17,19 @@ lv_obj_t * ui_conSym;
 lv_obj_t * ui_labSYMBOL;
 lv_obj_t * ui_labDESC;
 lv_obj_t * ui_conPrice;
+lv_obj_t * ui_labPRICE;
+void ui_event_butNext(lv_event_t * e);
+lv_obj_t * ui_butNext;
+lv_obj_t * ui_Label2;
+// CUSTOM VARIABLES
+
+
+// SCREEN: ui_Screen2
+void ui_Screen2_screen_init(void);
+lv_obj_t * ui_Screen2;
+void ui_event_butBack(lv_event_t * e);
+lv_obj_t * ui_butBack;
+lv_obj_t * ui_Label1;
 // CUSTOM VARIABLES
 
 // EVENTS
@@ -32,6 +45,23 @@ lv_obj_t * ui____initial_actions0;
 ///////////////////// ANIMATIONS ////////////////////
 
 ///////////////////// FUNCTIONS ////////////////////
+void ui_event_butNext(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+
+    if(event_code == LV_EVENT_CLICKED) {
+        _ui_screen_change(&ui_Screen2, LV_SCR_LOAD_ANIM_OVER_LEFT, 500, 0, &ui_Screen2_screen_init);
+    }
+}
+
+void ui_event_butBack(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+
+    if(event_code == LV_EVENT_CLICKED) {
+        _ui_screen_change(&ui_Screen1, LV_SCR_LOAD_ANIM_NONE, 500, 0, &ui_Screen1_screen_init);
+    }
+}
 
 ///////////////////// SCREENS ////////////////////
 
@@ -42,6 +72,7 @@ void ui_init(void)
                                                true, LV_FONT_DEFAULT);
     lv_disp_set_theme(dispp, theme);
     ui_Screen1_screen_init();
+    ui_Screen2_screen_init();
     ui____initial_actions0 = lv_obj_create(NULL);
     lv_disp_load_scr(ui_Screen1);
 }
