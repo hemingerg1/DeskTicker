@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:,">
-    <title>Desk Display Ticker List</title>
+    <title>Ticker List</title>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -41,6 +41,11 @@
 
         .delete-btn {
             background-color: #ff3b30;
+            padding: 5px 10px;
+        }
+
+        .move-btn {
+            background-color: #414141;
             padding: 5px 10px;
         }
 
@@ -136,7 +141,7 @@
 
 <body>
 
-    <h1>Desk Display Ticker List</h1>
+    <h1>Ticker List</h1>
 
     <!-- Table Buttons -->
     <div class="buttons-container">
@@ -160,14 +165,17 @@
         </tbody>
     </table>
 
-    <!-- sys Buttons -->
+    <p style="color: #E0E0E0; text-align: center;">
+        Note: The ticker must be available on
+        <a href="https://stockcharts.com" target="_blank" style="color: #3f8dff;">StockCharts.com</a>.
+    </p>
+
     <div class="buttons-container">
         <button id="sys-info-btn" class="sys-btn">System Info</button>
         <button id="files-btn" class="sys-btn">List Files</button>
     </div>
 
     <script>
-
         const apiUrl = `${window.location.origin}/api/tickerlist`;
         const submitBtn = document.getElementById('submit-btn');
         const addRowBtn = document.getElementById('add-row-btn');
@@ -205,7 +213,15 @@
             }
         }
 
-        // Populate table with data
+        // Restrict description input to 20 characters
+        function restrictInputLength(input, maxLength) {
+            input.addEventListener('input', () => {
+                if (input.value.length > maxLength) {
+                    input.value = input.value.substring(0, maxLength);
+                }
+            });
+        }
+
         function populateTable(data) {
             dataTableBody.innerHTML = ''; // Clear previous data
             data.forEach((item, index) => {
@@ -224,25 +240,101 @@
                 tickerCell.appendChild(tickerInput);
                 row.appendChild(tickerCell);
 
-                // Description (editable)
+                // Description (editable with limit)
                 const descCell = document.createElement('td');
                 const descInput = document.createElement('input');
                 descInput.type = 'text';
                 descInput.value = item.Desc;
+                restrictInputLength(descInput, 20); // Apply character limit
                 descCell.appendChild(descInput);
                 row.appendChild(descCell);
 
-                // Actions (Delete button)
+                // Actions (Delete, Move Up, Move Down)
                 const actionsCell = document.createElement('td');
+
                 const deleteButton = document.createElement('button');
                 deleteButton.textContent = 'Delete';
                 deleteButton.classList.add('delete-btn');
                 deleteButton.onclick = () => deleteRow(row);
                 actionsCell.appendChild(deleteButton);
-                row.appendChild(actionsCell);
 
+                const moveUpButton = document.createElement('button');
+                moveUpButton.textContent = '↑';
+                moveUpButton.classList.add('move-btn');
+                moveUpButton.onclick = () => moveRow(row, -1);
+                actionsCell.appendChild(moveUpButton);
+
+                const moveDownButton = document.createElement('button');
+                moveDownButton.textContent = '↓';
+                moveDownButton.classList.add('move-btn');
+                moveDownButton.onclick = () => moveRow(row, 1);
+                actionsCell.appendChild(moveDownButton);
+
+                row.appendChild(actionsCell);
                 dataTableBody.appendChild(row);
             });
+        }
+
+        // Move a row up or down
+        function moveRow(row, direction) {
+            const sibling = direction === -1 ? row.previousElementSibling : row.nextElementSibling;
+            if (sibling) {
+                const parent = row.parentNode;
+                parent.insertBefore(direction === -1 ? row : sibling, direction === -1 ? sibling : row);
+                renumberTable();
+            }
+        }
+
+        // Add a new row with the new features
+        function addRow() {
+            const row = document.createElement('tr');
+            const rowCount = dataTableBody.rows.length + 1;
+
+            // ID
+            const idCell = document.createElement('td');
+            idCell.textContent = rowCount;
+            row.appendChild(idCell);
+
+            // Ticker
+            const tickerCell = document.createElement('td');
+            const tickerInput = document.createElement('input');
+            tickerInput.type = 'text';
+            tickerInput.value = '';
+            tickerCell.appendChild(tickerInput);
+            row.appendChild(tickerCell);
+
+            // Description (limited)
+            const descCell = document.createElement('td');
+            const descInput = document.createElement('input');
+            descInput.type = 'text';
+            descInput.value = '';
+            restrictInputLength(descInput, 20);
+            descCell.appendChild(descInput);
+            row.appendChild(descCell);
+
+            // Actions
+            const actionsCell = document.createElement('td');
+
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = 'Delete';
+            deleteButton.classList.add('delete-btn');
+            deleteButton.onclick = () => deleteRow(row);
+            actionsCell.appendChild(deleteButton);
+
+            const moveUpButton = document.createElement('button');
+            moveUpButton.textContent = '↑';
+            moveUpButton.classList.add('move-btn');
+            moveUpButton.onclick = () => moveRow(row, -1);
+            actionsCell.appendChild(moveUpButton);
+
+            const moveDownButton = document.createElement('button');
+            moveDownButton.textContent = '↓';
+            moveDownButton.classList.add('move-btn');
+            moveDownButton.onclick = () => moveRow(row, 1);
+            actionsCell.appendChild(moveDownButton);
+
+            row.appendChild(actionsCell);
+            dataTableBody.appendChild(row);
         }
 
         // Delete a row from the table
@@ -259,45 +351,6 @@
                 idCell.textContent = index + 1; // Update the ID number
             });
         }
-
-        // Add a new row to the table with auto-generated ID
-        function addRow() {
-            const row = document.createElement('tr');
-            const rowCount = dataTableBody.rows.length + 1;  // Set row ID based on current count
-
-            // ID (auto-generated row number)
-            const idCell = document.createElement('td');
-            idCell.textContent = rowCount;
-            row.appendChild(idCell);
-
-            // Ticker (editable)
-            const tickerCell = document.createElement('td');
-            const tickerInput = document.createElement('input');
-            tickerInput.type = 'text';
-            tickerInput.value = ''; // Empty value to start
-            tickerCell.appendChild(tickerInput);
-            row.appendChild(tickerCell);
-
-            // Description (editable)
-            const descCell = document.createElement('td');
-            const descInput = document.createElement('input');
-            descInput.type = 'text';
-            descInput.value = ''; // Empty value to start
-            descCell.appendChild(descInput);
-            row.appendChild(descCell);
-
-            // Actions (Delete button)
-            const actionsCell = document.createElement('td');
-            const deleteButton = document.createElement('button');
-            deleteButton.textContent = 'Delete';
-            deleteButton.classList.add('delete-btn');
-            deleteButton.onclick = () => deleteRow(row);
-            actionsCell.appendChild(deleteButton);
-            row.appendChild(actionsCell);
-
-            dataTableBody.appendChild(row);
-        }
-
         // Convert table data to CSV format
         function tableToCSV() {
             const rows = dataTableBody.querySelectorAll('tr');
@@ -359,7 +412,6 @@
         // Initialize the page by fetching data
         fetchData();
     </script>
-
 </body>
 
 </html>

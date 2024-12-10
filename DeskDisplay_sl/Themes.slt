@@ -7,9 +7,9 @@
         "strtype": "THEME_COLOR",
         "strval": "defText",
         "intarray": [
-          105,
-          105,
-          105,
+          128,
+          127,
+          127,
           255
         ],
         "InheritedType": 0

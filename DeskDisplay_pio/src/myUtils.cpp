@@ -1,50 +1,94 @@
 
 #include "myUtils.h"
 
-#include "secrets.h"
-
 #include <Arduino.h>
+#include <lvgl.h>
 #include <WiFi.h>
 #include <FS.h>
 #include <SD.h>
+#include <Preferences.h>
+
+#include "uiFiles/ui.h"
 
 /***********************************************************************/
 /*****************************  ESP Utils  *****************************/
 /***********************************************************************/
+SemaphoreHandle_t prefsmutex = NULL;
 ESP32Time rtc(0);
+Preferences prefs;
+short int screenTimeout = 5;     // in minutes
+short int symbolChangeTime = 10; // in seconds
+bool noWifiInit = true;
 
-void wificon(void)
+// function to get settings from NVS storage
+void settingsInit()
 {
-    Serial.print("Connecting to WiFi...");
-    WiFi.disconnect(true);
-    delay(1000);
-    WiFi.setHostname(HOSTNAME);
-    WiFi.mode(WIFI_STA);
-    if (SIM)
+    xSemaphoreTake(prefsmutex, portMAX_DELAY);
+    if (prefs.begin("settings", false))
     {
-        Serial.println("Using Wokwi WIFI");
-        WiFi.begin("Wokwi-GUEST", "", 6);
+        symbolChangeTime = prefs.getShort("symChT", 10);
+        screenTimeout = prefs.getShort("slpT", 5);
+        prefs.end();
     }
     else
     {
-        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        Serial.println("*********Error opening NVS storage*********");
     }
+    xSemaphoreGive(prefsmutex);
+}
+
+// function to connect to wifi
+void wificon(void)
+{
+    WiFi.disconnect(true);
     delay(500);
+    WiFi.setHostname("DeskDisplay");
+    WiFi.mode(WIFI_STA);
+
+    // get SSID and PASSWORD from NVS storage
+    String SSID = "";
+    String PASSWORD = "";
+    Serial.print("Getting SSID and PASSWORD from NVS storage...");
+    while (SSID == "" || PASSWORD == "")
+    {
+        xSemaphoreTake(prefsmutex, portMAX_DELAY);
+        prefs.begin("settings", false);
+        SSID = prefs.getString("SSID", "");
+        PASSWORD = prefs.getString("PASS", "");
+        prefs.end();
+        xSemaphoreGive(prefsmutex);
+
+        if (SSID == "" || PASSWORD == "")
+        {
+            vTaskDelay(5000);
+        }
+    }
+    noWifiInit = false;
+
+    // connect to wifi
+    Serial.print("\nConnecting to WiFi...");
+    WiFi.begin(SSID, PASSWORD);
+    vTaskDelay(500);
     int t = 0;
     while (WiFi.status() != WL_CONNECTED)
     {
         t++;
         Serial.print('.');
-        delay(500);
+        vTaskDelay(500);
         if (t > 20)
         {
             Serial.println("Unable to connect to WiFi.");
             reboot();
         }
     }
-    Serial.println("WiFi connected. IP: " + WiFi.localIP().toString());
+
+    lv_label_set_text_fmt(ui_labWebAddress, "http://%s", WiFi.localIP().toString().c_str());
+    lv_textarea_set_text(ui_taWifiSsid, SSID.c_str());
+
+    Serial.println("WiFi connected. IP = " + WiFi.localIP().toString());
 }
 
+// function to sync the ESP32's rtc with NTP server
 void timeSync(const char *tzInfo, const char *ntpServer1, const char *ntpServer2)
 {
     configTzTime(tzInfo, ntpServer1, ntpServer2);
@@ -58,7 +102,6 @@ void timeSync(const char *tzInfo, const char *ntpServer1, const char *ntpServer2
         delay(500);
         i++;
     }
-    Serial.println();
 
     // Show time
     time_t tnow = time(nullptr);
@@ -81,8 +124,8 @@ SemaphoreHandle_t SDmutex = NULL;
 const char *htmlFilePath = "/index.html";
 const char *tickerListFilePath = "/tickerList.csv";
 
-String
-listDir(fs::FS &fs, const char *dirname)
+// Function to return a list of all files in the SD card
+String listDir(fs::FS &fs, const char *dirname)
 {
     Serial.printf("Listing directory: %s\n", dirname);
     String result;
@@ -159,6 +202,7 @@ listDir(fs::FS &fs, const char *dirname)
     return result;
 }
 
+// Serial print the SD card usage
 void printSdUssage(void)
 {
     Serial.println("-------- SD Card usage --------");
@@ -177,7 +221,7 @@ void printSdUssage(void)
 SemaphoreHandle_t TickListmutex = NULL;
 const ushort maxTickers = 30;
 const ushort tickerListColNum = 3;
-bool updateTickerList = true;
+bool updateTickerList = false;
 ushort numTickers = 0;
 bool marketOpen = false;
 ticker tickerList[maxTickers];

@@ -18,9 +18,11 @@ void dataTask(void *parameters);
 void loadTickers(void);
 void tickerListUpdate(void);
 String getStartDate(int length);
-String getHistoricData(ticker ticker, int length);
+String getHistoricData(const String symbol, int length);
 void getTodayData(int tickerNum);
 void isMarketOpen(void);
 void getEODData(void);
+bool updateCsvFile(const int tickerIndex);
+bool isCsvFileDataUpToDate(const String symbol);
 
 #endif

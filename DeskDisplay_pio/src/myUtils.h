@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <ESP32Time.h>
+#include <Preferences.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -14,7 +15,14 @@
 /***********************************************************************/
 /*****************************  ESP Utils  *****************************/
 /***********************************************************************/
+extern SemaphoreHandle_t prefsmutex;
 extern ESP32Time rtc;
+extern Preferences prefs;
+extern short int screenTimeout;    // in minutes
+extern short int symbolChangeTime; // in seconds
+extern bool noWifiInit;
+
+void settingsInit();
 void wificon(void);
 void timeSync(const char *tzInfo, const char *ntpServer1, const char *ntpServer2);
 void reboot(void);
@@ -22,7 +30,7 @@ void reboot(void);
 /***********************************************************************/
 /*****************************  SD card Utils  *************************/
 /***********************************************************************/
-extern SemaphoreHandle_t SDmutex; // SemaphoreHandle_t
+extern SemaphoreHandle_t SDmutex;
 
 // Path to files on the SD card
 extern const char *htmlFilePath;

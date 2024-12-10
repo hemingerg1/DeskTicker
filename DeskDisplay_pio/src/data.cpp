@@ -1,24 +1,23 @@
 #include "data.hpp"
 
 #include "myUtils.h"
-#include "secrets.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ESP32Time.h>
 #include <FS.h>
 #include <SD.h>
-// #include <CSV_Parser.h>
 #include <DatabaseOnSD.h>
 #include <WiFiClientSecure.h>
-#include <ESP32Ping.h>
 #include <ArduinoJson.h>
 
 MyTable listTable(tickerListFilePath);
 
-ushort priceHistLen = 30;  // in days
+ushort priceHistLen = 60;  // in days
 ushort updateInterval = 5; // in minutes
 bool eodUpdate = false;
+bool gotEOD = false;
+bool gotNightlyCheck = false;
 
 const char *scURLBase = "stockcharts.com";
 const char *scHistURLPath = "/quotebrain/historyandquote/d";
@@ -30,29 +29,37 @@ const char *userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gec
 /***********************************************************************/
 void dataTask(void *parameters)
 {
-    vTaskDelay(1000);
     Serial.println("Starting dataTask");
 
     unsigned long lastUpdate = 0;
+
+    loadTickers();
+
+    // check if csv files are up to date and get todays price
+    for (int i = 0; i < numTickers; i++)
+    {
+        if (!isCsvFileDataUpToDate(tickerList[i].symbol))
+        {
+            Serial.println(tickerList[i].symbol + ".csv is outdated. Updating now...");
+            updateCsvFile(i);
+            vTaskDelay(5000);
+        }
+        getTodayData(i);
+        vTaskDelay(5000);
+    }
+    lastUpdate = millis();
 
     while (1)
     {
         // check if the market is open
         isMarketOpen();
 
-        // updates data if ticker list is changed
+        // updates data if ticker list is changed from web page
         if (updateTickerList)
         {
             Serial.println("Updating ticker list and data");
             tickerListUpdate();
             updateTickerList = false;
-            vTaskDelay(5000);
-            for (int i = 0; i < numTickers; i++)
-            {
-                getTodayData(i);
-                vTaskDelay(5000);
-            }
-            lastUpdate = millis();
         }
 
         if (marketOpen)
@@ -88,7 +95,6 @@ void loadTickers(void)
     xSemaphoreTake(SDmutex, portMAX_DELAY);
     if (listTable.countCols() == tickerListColNum)
     {
-        // listTable.printTable();
         numTickers = listTable.countRows() - 1;
         Serial.printf("Number of Tickers: %d\n", numTickers);
         xSemaphoreTake(TickListmutex, portMAX_DELAY);
@@ -98,7 +104,6 @@ void loadTickers(void)
             tickerList[row].id = listTable.readCell(row + 1, 0).toInt();
             tickerList[row].symbol = listTable.readCell(row + 1, 1);
             tickerList[row].disc = listTable.readCell(row + 1, 2);
-            // Print the ticker information
             Serial.printf("%d, %s, %s\n", tickerList[row].id, tickerList[row].symbol.c_str(), tickerList[row].disc.c_str());
         }
         xSemaphoreGive(TickListmutex);
@@ -174,12 +179,8 @@ void tickerListUpdate(void)
             Serial.print("No CSV found for symbol: ");
             Serial.println(tickerList[i].symbol);
             String csvData = "";
-            csvData = getHistoricData(tickerList[i], priceHistLen);
-            if (csvData == "")
-            {
-                Serial.println("Failed to get data for symbol: " + tickerList[i].symbol);
-            }
-            else
+            csvData = getHistoricData(tickerList[i].symbol, priceHistLen);
+            if (csvData != "")
             {
                 File file = SD.open("/data/" + tickerList[i].symbol + ".csv", FILE_WRITE);
                 if (!file)
@@ -226,92 +227,108 @@ String getStartDate(int length)
 }
 
 // Function to get price data from StockCharts.com and save to CSV file
-String getHistoricData(ticker ticker, int length)
+String getHistoricData(const String symbol, int length)
 {
-    Serial.println("Getting data for " + ticker.symbol);
-    WiFiClientSecure client;
-    client.setInsecure();
-    client.setTimeout(30);
-    if (!client.connect(scURLBase, 443))
+    Serial.println("Getting data for " + symbol);
+    String csvData = "";
+    for (int j = 0; j < 5; j++)
     {
-        Serial.println("Connection failed!");
-        client.stop();
-        return "";
-    }
-    // Serial.println("Connected to " + String(scURLBase));
-    //  build query string
-    String queryParams = String("?symbol=") + ticker.symbol + "&start=" + getStartDate(length);
-
-    // Construct the HTTP request
-    String request = String("GET ") + scHistURLPath + queryParams + " HTTP/1.0\r\n" +
-                     "Host: " + scURLBase + "\r\n" +
-                     "User-Agent: " + userAgent + "\r\n" +
-                     "Connection: close\r\n\r\n";
-
-    // Send the request
-    client.print(request);
-    // Serial.println(request);
-
-    // Use to print out headers
-    /*
-    while (client.connected() || client.available())
-    {
-        if (client.available())
+        if (j > 0)
         {
-            String line = client.readStringUntil('\n');
-            Serial.println(line);
-            if (line == "\r")
+            Serial.println("Attempt " + String(j + 1) + " to get todays price for " + symbol);
+            Serial.println("Waiting " + String(10 * j) + " seconds before retrying...");
+        }
+        vTaskDelay(10000 * j);
+        WiFiClientSecure client;
+        client.setInsecure();
+        client.setTimeout(30);
+        if (!client.connect(scURLBase, 443))
+        {
+            Serial.println("Connection failed!");
+            client.stop();
+            continue;
+        }
+
+        //  build query string
+        String queryParams = String("?symbol=") + symbol + "&start=" + getStartDate(length);
+
+        // Construct the HTTP request
+        String request = String("GET ") + scHistURLPath + queryParams + " HTTP/1.0\r\n" +
+                         "Host: " + scURLBase + "\r\n" +
+                         "User-Agent: " + userAgent + "\r\n" +
+                         "Connection: close\r\n\r\n";
+
+        // Send the request
+        client.print(request);
+
+        // Use to print out headers
+        /*
+        while (client.connected() || client.available())
+        {
+            if (client.available())
             {
-                // Headers received, break to read body
-                break;
+                String line = client.readStringUntil('\n');
+                Serial.println(line);
+                if (line == "\r")
+                {
+                    // Headers received, break to read body
+                    break;
+                }
             }
         }
-    }
-    */
+        */
 
-    // Print HTTP status
-    char status[32] = {0};
-    client.readBytesUntil('\r', status, sizeof(status));
-    Serial.print("Status: ");
-    Serial.println(status);
+        // Print HTTP status
+        char status[32] = {0};
+        client.readBytesUntil('\r', status, sizeof(status));
+        Serial.print("Status: ");
+        Serial.println(status);
 
-    // Skip HTTP headers
-    char endOfHeaders[] = "\r\n\r\n";
-    if (!client.find(endOfHeaders))
-    {
-        Serial.println(F("Invalid response"));
+        // Skip HTTP headers
+        char endOfHeaders[] = "\r\n\r\n";
+        if (!client.find(endOfHeaders))
+        {
+            Serial.println(F("Invalid response"));
+            client.stop();
+            continue;
+        }
+
+        // Create a filter to extract the desired fields
+        JsonDocument filter;
+        filter["history"]["intervals"][0]["end"]["time"] = true;
+        filter["history"]["intervals"][0]["close"] = true;
+        // Parse the JSON response
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, client, DeserializationOption::Filter(filter));
+
         client.stop();
+
+        if (error)
+        {
+            Serial.print("Failed to parse JSON: ");
+            Serial.println(error.c_str());
+            continue;
+        }
+        // Print the JSON document
+        // serializeJsonPretty(doc, Serial);
+
+        // parse data to CSV
+        csvData += "Date,Close\n";
+        JsonArray intervals = doc["history"]["intervals"];
+        for (JsonObject interval : intervals)
+        {
+            csvData += interval["end"]["time"].as<String>().substring(0, 10) + "," + interval["close"].as<String>() + "\n";
+        }
+        Serial.println("CSV Data:");
+        Serial.println(csvData);
+        break;
+    }
+    if (csvData == "")
+    {
+        Serial.println("Failed to get historic data for " + symbol);
         return "";
     }
 
-    // Create a filter to extract the desired fields
-    JsonDocument filter;
-    filter["history"]["intervals"][0]["end"]["time"] = true;
-    filter["history"]["intervals"][0]["close"] = true;
-    // Parse the JSON response
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, client, DeserializationOption::Filter(filter));
-
-    client.stop();
-
-    if (error)
-    {
-        Serial.print("Failed to parse JSON: ");
-        Serial.println(error.c_str());
-        return "";
-    }
-    // Print the JSON document
-    // serializeJsonPretty(doc, Serial);
-
-    // parse data to CSV
-    String csvData = "Date,Close\n";
-    JsonArray intervals = doc["history"]["intervals"];
-    for (JsonObject interval : intervals)
-    {
-        csvData += interval["end"]["time"].as<String>().substring(0, 10) + "," + interval["close"].as<String>() + "\n";
-    }
-    Serial.println("CSV Data:");
-    Serial.println(csvData);
     return csvData;
 }
 
@@ -320,97 +337,129 @@ void getTodayData(int tickerNum)
 {
     xSemaphoreTake(TickListmutex, portMAX_DELAY);
     Serial.println("Getting todays price for " + tickerList[tickerNum].symbol);
-    WiFiClientSecure client;
-    client.setInsecure();
-    client.setTimeout(30);
-    if (!client.connect(scURLBase, 443))
+    for (int j = 0; j < 5; j++)
     {
-        Serial.println("Connection failed!");
+        if (j > 0)
+        {
+            Serial.println("Attempt " + String(j + 1) + " to get todays price for " + tickerList[tickerNum].symbol);
+            Serial.println("Waiting " + String(10 * j) + " seconds before retrying...");
+        }
+        vTaskDelay(10000 * j);
+        WiFiClientSecure client;
+        client.setInsecure();
+        client.setTimeout(30);
+        if (!client.connect(scURLBase, 443))
+        {
+            Serial.println("Connection failed!");
+            client.stop();
+            continue;
+        }
+
+        //  build query string
+        String queryParams = String("?symbol=") + tickerList[tickerNum].symbol + "&format=json";
+
+        // Construct the HTTP request
+        String request = String("GET ") + scTodayURLPath + queryParams + " HTTP/1.0\r\n" +
+                         "Host: " + scURLBase + "\r\n" +
+                         "User-Agent: " + userAgent + "\r\n" +
+                         "Connection: close\r\n\r\n";
+
+        // Send the request
+        client.print(request);
+
+        // Print HTTP status
+        char status[32] = {0};
+        client.readBytesUntil('\r', status, sizeof(status));
+        // Serial.print("Status: ");
+        // Serial.println(status);
+
+        // Skip HTTP headers
+        char endOfHeaders[] = "\r\n\r\n";
+        if (!client.find(endOfHeaders))
+        {
+            Serial.println(F("Invalid response"));
+            client.stop();
+            continue;
+        }
+
+        // Create a filter to extract the desired fields
+        JsonDocument filter;
+        filter[0]["close"] = true;
+        filter[0]["closeYesterday"] = true;
+        // Parse the JSON response
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, client, DeserializationOption::Filter(filter));
+
         client.stop();
-        return;
+
+        if (error)
+        {
+            Serial.print("Failed to parse JSON: ");
+            Serial.println(error.c_str());
+            continue;
+        }
+        // Print the JSON document
+        // serializeJson(doc, Serial);
+
+        float todaysClose = doc[0]["close"].as<float>();
+        float CloseYesterday = doc[0]["closeYesterday"].as<float>();
+        if (todaysClose != 0 && CloseYesterday != 0)
+        {
+            tickerList[tickerNum].price = todaysClose;
+            tickerList[tickerNum].change = todaysClose - CloseYesterday;
+            tickerList[tickerNum].changePct = (tickerList[tickerNum].change / CloseYesterday) * 100;
+            Serial.printf("Ticker: %s, Price: %.2f, Change: %.2f, ChangePct: %.2f%%\n", tickerList[tickerNum].symbol.c_str(), tickerList[tickerNum].price, tickerList[tickerNum].change, tickerList[tickerNum].changePct);
+        }
+        else
+        {
+            Serial.println("Failed to get todays price for " + tickerList[tickerNum].symbol);
+            continue;
+        }
+        break;
     }
-    // Serial.println("Connected to " + String(scURLBase));
-    //  build query string
-    String queryParams = String("?symbol=") + tickerList[tickerNum].symbol + "&format=json";
-
-    // Construct the HTTP request
-    String request = String("GET ") + scTodayURLPath + queryParams + " HTTP/1.0\r\n" +
-                     "Host: " + scURLBase + "\r\n" +
-                     "User-Agent: " + userAgent + "\r\n" +
-                     "Connection: close\r\n\r\n";
-
-    // Send the request
-    client.print(request);
-    // Serial.println(request);
-
-    // Print HTTP status
-    char status[32] = {0};
-    client.readBytesUntil('\r', status, sizeof(status));
-    // Serial.print("Status: ");
-    // Serial.println(status);
-
-    // Skip HTTP headers
-    char endOfHeaders[] = "\r\n\r\n";
-    if (!client.find(endOfHeaders))
-    {
-        Serial.println(F("Invalid response"));
-        client.stop();
-        return;
-    }
-
-    // Create a filter to extract the desired fields
-    JsonDocument filter;
-    filter[0]["close"] = true;
-    filter[0]["closeYesterday"] = true;
-    // Parse the JSON response
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, client, DeserializationOption::Filter(filter));
-
-    client.stop();
-
-    if (error)
-    {
-        Serial.print("Failed to parse JSON: ");
-        Serial.println(error.c_str());
-        return;
-    }
-    // Print the JSON document
-    // serializeJson(doc, Serial);
-
-    float todaysClose = doc[0]["close"].as<float>();
-    float CloseYesterday = doc[0]["closeYesterday"].as<float>();
-    if (todaysClose != 0 && CloseYesterday != 0)
-    {
-        tickerList[tickerNum].price = todaysClose;
-        tickerList[tickerNum].change = todaysClose - CloseYesterday;
-        tickerList[tickerNum].changePct = (tickerList[tickerNum].change / CloseYesterday) * 100;
-        Serial.printf("Ticker: %s, Price: %.2f, Change: %.2f, ChangePct: %.2f%%\n", tickerList[tickerNum].symbol.c_str(), tickerList[tickerNum].price, tickerList[tickerNum].change, tickerList[tickerNum].changePct);
-    }
-    else
-    {
-        Serial.println("Failed to get todays price for " + tickerList[tickerNum].symbol);
-    }
-
     xSemaphoreGive(TickListmutex);
 }
 
 // Function to check if market is open
 void isMarketOpen(void)
 {
-    if (rtc.getDayofWeek() >= 1 && rtc.getDayofWeek() <= 5)
+    const int dow = rtc.getDayofWeek();
+    const int h = rtc.getHour(true);
+    const int m = rtc.getMinute();
+
+    if (dow >= 1 && dow <= 5)
     {
-        if (rtc.getHour() == 9 && rtc.getMinute() >= 30)
+        if (h == 9 && m >= 30)
+        {
+            marketOpen = true;
+            gotEOD = false;
+            gotNightlyCheck = false;
+        }
+        else if (h == 16 && m <= 15)
         {
             marketOpen = true;
         }
-        else if (rtc.getHour() == 16 && rtc.getMinute() <= 10)
+        else if (h == 16 && m > 15 and !gotEOD)
         {
-            marketOpen = true;
+            marketOpen = false;
             eodUpdate = true;
         }
-        else if (rtc.getHour() > 9 && rtc.getHour() < 16)
+        else if (h > 9 && h < 16)
         {
             marketOpen = true;
+        }
+        else if (h == 23 && !gotNightlyCheck)
+        {
+            for (int i = 0; i < numTickers; i++)
+            {
+                if (!isCsvFileDataUpToDate(tickerList[i].symbol))
+                {
+                    Serial.println(tickerList[i].symbol + ".csv is outdated. Updating now...");
+                    updateCsvFile(i);
+                    vTaskDelay(5000);
+                }
+            }
+            gotNightlyCheck = true;
         }
         else
         {
@@ -427,34 +476,82 @@ void isMarketOpen(void)
 void getEODData(void)
 {
     Serial.println("Getting EOD data");
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
-    xSemaphoreTake(TickListmutex, portMAX_DELAY);
     for (int i = 0; i < numTickers; i++)
     {
-        String csvData = "";
-        csvData = getHistoricData(tickerList[i], priceHistLen);
-        if (csvData == "")
+        // retry the update if it fails
+        for (int j = 1; j < 5; j++)
         {
-            Serial.println("Failed to get data for symbol: " + tickerList[i].symbol);
+            if (updateCsvFile(i))
+            {
+                break;
+            }
+            Serial.println(tickerList[i].symbol + ".csv failed " + String(j) + " times");
+            vTaskDelay(10000 * j);
+        }
+        vTaskDelay(5000); // Delay to avoid sending too many requests
+    }
+    eodUpdate = false;
+    gotEOD = true;
+}
+
+// Function to update a CSV data file
+bool updateCsvFile(const int tickerIndex)
+{
+    bool success = false;
+    xSemaphoreTake(SDmutex, portMAX_DELAY);
+    xSemaphoreTake(TickListmutex, portMAX_DELAY);
+    String csvData = "";
+    csvData = getHistoricData(tickerList[tickerIndex].symbol, priceHistLen);
+    if (csvData != "")
+    {
+        File file = SD.open("/data/" + tickerList[tickerIndex].symbol + ".csv", FILE_WRITE);
+        if (!file)
+        {
+            Serial.println("Failed to open file for writing");
         }
         else
         {
-            File file = SD.open("/data/" + tickerList[i].symbol + ".csv", FILE_WRITE);
-            if (!file)
+            // Write the received CSV data to the file
+            file.print(csvData);
+            file.close();
+            Serial.println("Data saved to /data/" + tickerList[tickerIndex].symbol + ".csv");
+            success = true;
+        }
+    }
+    xSemaphoreGive(SDmutex);
+    xSemaphoreGive(TickListmutex);
+    return success;
+}
+
+// Function to check if CSV data files are up todate
+bool isCsvFileDataUpToDate(const String symbol)
+{
+    xSemaphoreTake(SDmutex, portMAX_DELAY);
+    MyTable table("/data/" + symbol + ".csv");
+    bool dataUpToDate = false;
+    int rows = 0;
+    rows = table.countRows();
+    String lastDate;
+
+    if (rows != 0)
+    {
+        lastDate = table.readCell(rows - 1, 0);
+        int month = lastDate.substring(5, 7).toInt();
+        int day = lastDate.substring(8, 10).toInt();
+        Serial.printf("Last date in %s.csv: %d/%d\n", symbol, month, day);
+        if (month == rtc.getMonth() + 1 && day == rtc.getDay())
+        {
+            dataUpToDate = true;
+        }
+        else if (rtc.getDayofWeek() == 0 || rtc.getDayofWeek() == 6) // if it is a weekend
+        {
+            if (abs(rtc.getDay() - day) < 3 || rtc.getDay() <= 2)
             {
-                Serial.println("Failed to open file for writing");
-            }
-            else
-            {
-                // Write the received CSV data to the file
-                file.print(csvData);
-                file.close();
-                Serial.println("Data saved to /data/" + tickerList[i].symbol + ".csv");
+                dataUpToDate = true;
             }
         }
-        vTaskDelay(5000); // Delay to avoid sending too many requ
     }
-    xSemaphoreGive(TickListmutex);
+
     xSemaphoreGive(SDmutex);
-    eodUpdate = false;
+    return dataUpToDate;
 }

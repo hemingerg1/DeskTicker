@@ -6,7 +6,7 @@
 #include "ui.h"
 
 
-const ui_theme_variable_t _ui_theme_color_defText[1] = {0x696969};
+const ui_theme_variable_t _ui_theme_color_defText[1] = {0x807F7F};
 const ui_theme_variable_t _ui_theme_alpha_defText[1] = {255};
 
 const ui_theme_variable_t _ui_theme_color_upText[1] = {0x72D679};
