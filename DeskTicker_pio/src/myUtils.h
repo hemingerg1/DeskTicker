@@ -20,6 +20,7 @@ extern ESP32Time rtc;
 extern Preferences prefs;
 extern short int screenTimeout;    // in minutes
 extern short int symbolChangeTime; // in seconds
+extern short int priceHistLen;     // in days
 extern bool noWifiInit;
 
 void settingsInit();
@@ -47,6 +48,7 @@ extern const ushort maxTickers;
 extern ushort numTickers;
 extern const ushort tickerListColNum;
 extern bool updateTickerList;
+extern bool updateHistLength;
 extern bool marketOpen;
 struct ticker
 {

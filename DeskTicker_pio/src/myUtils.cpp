@@ -18,6 +18,7 @@ ESP32Time rtc(0);
 Preferences prefs;
 short int screenTimeout = 5;     // in minutes
 short int symbolChangeTime = 10; // in seconds
+short int priceHistLen = 60;     // in days
 bool noWifiInit = true;
 
 // function to get settings from NVS storage
@@ -28,6 +29,7 @@ void settingsInit()
     {
         symbolChangeTime = prefs.getShort("symChT", 10);
         screenTimeout = prefs.getShort("slpT", 5);
+        priceHistLen = prefs.getShort("histLen", 60);
         prefs.end();
     }
     else
@@ -107,6 +109,12 @@ void timeSync(const char *tzInfo, const char *ntpServer1, const char *ntpServer2
     time_t tnow = time(nullptr);
     Serial.print("Synchronized time: ");
     Serial.println(ctime(&tnow));
+
+    // if time synce failed, reboot
+    if (rtc.getYear() < 2020)
+    {
+        reboot();
+    }
 }
 
 void reboot(void)
@@ -222,6 +230,7 @@ SemaphoreHandle_t TickListmutex = NULL;
 const ushort maxTickers = 30;
 const ushort tickerListColNum = 3;
 bool updateTickerList = false;
+bool updateHistLength = false;
 ushort numTickers = 0;
 bool marketOpen = false;
 ticker tickerList[maxTickers];

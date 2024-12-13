@@ -3,7 +3,6 @@
 
 #include "myUtils.h"
 
-extern ushort priceHistLen;   // in days
 extern ushort updateInterval; // in minutes
 extern bool eodUpdate;
 
@@ -21,7 +20,7 @@ String getStartDate(int length);
 String getHistoricData(const String symbol, int length);
 void getTodayData(int tickerNum);
 void isMarketOpen(void);
-void getEODData(void);
+void updateAllCsvFiles(void);
 bool updateCsvFile(const int tickerIndex);
 bool isCsvFileDataUpToDate(const String symbol);
 

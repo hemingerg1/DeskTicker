@@ -49,8 +49,6 @@ void uiTask(void *parameters)
     uint tickerNum = 0;
     ulong cdr = 0;
 
-    Serial.println("uiTask: init done");
-
     // delay to let wificon() try to retreive wifi credentials from NVS
     vTaskDelay(1000);
 
@@ -144,7 +142,6 @@ void updateChart(const ticker tic)
     bool addToday = false;
     int len = 0;
     len = table.countRows() - 1; // subtract 1 to exclude header row
-    Serial.printf("updateChart: len: %d\n", len);
     if (len > 1)
     {
         for (int i = 1; i <= len; i++)
@@ -171,7 +168,11 @@ void updateChart(const ticker tic)
             {
                 chartDataArray[i - 1] = int(table.readCell(i, 1).toFloat() * 100);
             }
-            Serial.println(String(i) + ": " + String(chartDataArray[i - 1]));
+            // if there is error reading the SD card, use the previous value
+            if (chartDataArray[i - 1] == 0 && i > 1)
+            {
+                chartDataArray[i - 1] = chartDataArray[i - 2];
+            }
         }
         xSemaphoreGive(SDmutex);
 
@@ -228,7 +229,16 @@ static void draw_event_cb(lv_event_t *e)
             /*Malloc the text and set text_local as 1 to make LVGL automatically free the text.
              * (Local texts are malloc'd internally by LVGL. Mimic this behavior here too)*/
             char tmp_buffer[20] = {0}; /* Big enough buffer */
-            lv_snprintf(tmp_buffer, sizeof(tmp_buffer), "%.1f", (float)base_dsc->id2 / 100.0);
+            float val = (float)base_dsc->id2 / 100.0;
+            if (val > 100)
+            {
+                lv_snprintf(tmp_buffer, sizeof(tmp_buffer), "%d", val);
+            }
+            else
+            {
+                lv_snprintf(tmp_buffer, sizeof(tmp_buffer), "%.1f", val);
+            }
+
             label_draw_dsc->text = lv_strdup(tmp_buffer);
             label_draw_dsc->text_local = 1;
         }
@@ -239,17 +249,36 @@ static void draw_event_cb(lv_event_t *e)
 void displaySleep()
 {
     int inactMin = lv_disp_get_inactive_time(NULL) / 1000 / 60;
-    if (!screenSleep && inactMin >= screenTimeout)
+    // increase sleep timeout if market is open
+    if (marketOpen)
     {
-        smartdisplay_lcd_set_backlight(0.05);
-        lv_scr_load(ui_ScrSleep);
-        screenSleep = true;
+        if (!screenSleep && inactMin >= screenTimeout * 6)
+        {
+            smartdisplay_lcd_set_backlight(0.05);
+            lv_scr_load(ui_ScrSleep);
+            screenSleep = true;
+        }
+        else if (screenSleep && inactMin < screenTimeout * 6)
+        {
+            smartdisplay_lcd_set_backlight(0.7);
+            lv_scr_load(ui_ScrHome);
+            screenSleep = false;
+        }
     }
-    else if (screenSleep && inactMin < screenTimeout)
+    else
     {
-        smartdisplay_lcd_set_backlight(0.7);
-        lv_scr_load(ui_ScrHome);
-        screenSleep = false;
+        if (!screenSleep && inactMin >= screenTimeout)
+        {
+            smartdisplay_lcd_set_backlight(0.05);
+            lv_scr_load(ui_ScrSleep);
+            screenSleep = true;
+        }
+        else if (screenSleep && inactMin < screenTimeout)
+        {
+            smartdisplay_lcd_set_backlight(0.7);
+            lv_scr_load(ui_ScrHome);
+            screenSleep = false;
+        }
     }
 }
 

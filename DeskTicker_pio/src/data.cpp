@@ -11,13 +11,15 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
+#define PRINT_HEADERS false
+
 MyTable listTable(tickerListFilePath);
 
-ushort priceHistLen = 60;  // in days
 ushort updateInterval = 5; // in minutes
 bool eodUpdate = false;
 bool gotEOD = false;
 bool gotNightlyCheck = false;
+ushort faildCount = 0;
 
 const char *scURLBase = "stockcharts.com";
 const char *scHistURLPath = "/quotebrain/historyandquote/d";
@@ -30,6 +32,9 @@ const char *userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gec
 void dataTask(void *parameters)
 {
     Serial.println("Starting dataTask");
+
+    // check if the market is open
+    isMarketOpen();
 
     unsigned long lastUpdate = 0;
 
@@ -62,6 +67,13 @@ void dataTask(void *parameters)
             updateTickerList = false;
         }
 
+        if (updateHistLength)
+        {
+            Serial.println("Updating CSV files with new historic data length");
+            updateAllCsvFiles();
+            updateHistLength = false;
+        }
+
         if (marketOpen)
         {
             // updates the current price every <updateInterval> minutes
@@ -78,7 +90,9 @@ void dataTask(void *parameters)
         else if (eodUpdate)
         {
             // update csv files at the end of the day
-            getEODData();
+            updateAllCsvFiles();
+            eodUpdate = false;
+            gotEOD = true;
         }
 
         vTaskDelay(5000);
@@ -222,14 +236,14 @@ String getStartDate(int length)
              timeinfo.tm_year + 1900,
              timeinfo.tm_mon + 1,
              timeinfo.tm_mday);
-
+    // Serial.println("Start date: " + String(dateBuffer));
     return String(dateBuffer);
 }
 
 // Function to get price data from StockCharts.com and save to CSV file
 String getHistoricData(const String symbol, int length)
 {
-    Serial.println("Getting data for " + symbol);
+    // Serial.println("Getting data for " + symbol + " for " + String(length) + " days");
     String csvData = "";
     for (int j = 0; j < 5; j++)
     {
@@ -262,13 +276,15 @@ String getHistoricData(const String symbol, int length)
         client.print(request);
 
         // Use to print out headers
-        /*
         while (client.connected() || client.available())
         {
             if (client.available())
             {
                 String line = client.readStringUntil('\n');
-                Serial.println(line);
+                if (PRINT_HEADERS)
+                {
+                    Serial.println(line);
+                }
                 if (line == "\r")
                 {
                     // Headers received, break to read body
@@ -276,8 +292,8 @@ String getHistoricData(const String symbol, int length)
                 }
             }
         }
-        */
 
+        /*
         // Print HTTP status
         char status[32] = {0};
         client.readBytesUntil('\r', status, sizeof(status));
@@ -292,6 +308,7 @@ String getHistoricData(const String symbol, int length)
             client.stop();
             continue;
         }
+        */
 
         // Create a filter to extract the desired fields
         JsonDocument filter;
@@ -326,6 +343,12 @@ String getHistoricData(const String symbol, int length)
     if (csvData == "")
     {
         Serial.println("Failed to get historic data for " + symbol);
+        faildCount++;
+        if (faildCount >= 3)
+        {
+            Serial.println("Too many failed attempts to get data. Rebooting...");
+            reboot();
+        }
         return "";
     }
 
@@ -336,7 +359,7 @@ String getHistoricData(const String symbol, int length)
 void getTodayData(int tickerNum)
 {
     xSemaphoreTake(TickListmutex, portMAX_DELAY);
-    Serial.println("Getting todays price for " + tickerList[tickerNum].symbol);
+    // Serial.println("Getting todays price for " + tickerList[tickerNum].symbol);
     for (int j = 0; j < 5; j++)
     {
         if (j > 0)
@@ -367,6 +390,25 @@ void getTodayData(int tickerNum)
         // Send the request
         client.print(request);
 
+        // Use to print out headers
+        while (client.connected() || client.available())
+        {
+            if (client.available())
+            {
+                String line = client.readStringUntil('\n');
+                if (PRINT_HEADERS)
+                {
+                    Serial.println(line);
+                }
+                if (line == "\r")
+                {
+                    // Headers received, break to read body
+                    break;
+                }
+            }
+        }
+
+        /*
         // Print HTTP status
         char status[32] = {0};
         client.readBytesUntil('\r', status, sizeof(status));
@@ -381,6 +423,7 @@ void getTodayData(int tickerNum)
             client.stop();
             continue;
         }
+        */
 
         // Create a filter to extract the desired fields
         JsonDocument filter;
@@ -413,6 +456,12 @@ void getTodayData(int tickerNum)
         else
         {
             Serial.println("Failed to get todays price for " + tickerList[tickerNum].symbol);
+            faildCount++;
+            if (faildCount >= 3)
+            {
+                Serial.println("Too many failed attempts to get data. Rebooting...");
+                reboot();
+            }
             continue;
         }
         break;
@@ -450,6 +499,7 @@ void isMarketOpen(void)
         }
         else if (h == 23 && !gotNightlyCheck)
         {
+            faildCount = 0;
             for (int i = 0; i < numTickers; i++)
             {
                 if (!isCsvFileDataUpToDate(tickerList[i].symbol))
@@ -473,25 +523,14 @@ void isMarketOpen(void)
 }
 
 // Function to update data csv files at end of day
-void getEODData(void)
+void updateAllCsvFiles(void)
 {
-    Serial.println("Getting EOD data");
+    Serial.println("Updating all CSV data files");
     for (int i = 0; i < numTickers; i++)
     {
-        // retry the update if it fails
-        for (int j = 1; j < 5; j++)
-        {
-            if (updateCsvFile(i))
-            {
-                break;
-            }
-            Serial.println(tickerList[i].symbol + ".csv failed " + String(j) + " times");
-            vTaskDelay(10000 * j);
-        }
+        updateCsvFile(i);
         vTaskDelay(5000); // Delay to avoid sending too many requests
     }
-    eodUpdate = false;
-    gotEOD = true;
 }
 
 // Function to update a CSV data file
@@ -501,6 +540,7 @@ bool updateCsvFile(const int tickerIndex)
     xSemaphoreTake(SDmutex, portMAX_DELAY);
     xSemaphoreTake(TickListmutex, portMAX_DELAY);
     String csvData = "";
+    Serial.println("Updating " + tickerList[tickerIndex].symbol + ".csv l=" + String(priceHistLen));
     csvData = getHistoricData(tickerList[tickerIndex].symbol, priceHistLen);
     if (csvData != "")
     {
@@ -514,7 +554,7 @@ bool updateCsvFile(const int tickerIndex)
             // Write the received CSV data to the file
             file.print(csvData);
             file.close();
-            Serial.println("Data saved to /data/" + tickerList[tickerIndex].symbol + ".csv");
+            // Serial.println("Data saved to /data/" + tickerList[tickerIndex].symbol + ".csv");
             success = true;
         }
     }

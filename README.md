@@ -2,6 +2,8 @@
 
 DeskTicker is a compact and customizable stock display designed for a small display module. This project was originally designed for the ESP32-2432S032 board but could be easily adapted to other Arduino compatible displays. It displays current stock prices and daily changes, along with a visual chart of daily data. DeskTicker also includes a user-friendly web interface for managing the list of stocks to display.
 
+<p align="center"><img src="assests/imgs/homeScreen.png"></p>  
+<p align="center"><img src="assests/imgs/settingsScreen.png"></p>
 
 ## Features
 
@@ -49,25 +51,27 @@ DeskTicker is a compact and customizable stock display designed for a small disp
 3. **Configure stocks**: Add or remove stocks to customize the display.
 4. **View the display**: Stock data and charts will be updated automatically.
 
-## Screenshots
-
-![Placeholder for screenshots](#)
-
 
 ## Adapting to Other Displays
 
-DeskTicker is designed for the ESP32-2432S032 display but should be easily adapted to other displays. If using another Sunton display <<<<<<
+DeskTicker is designed for the ESP32-2432S032 display but should be easily adapted to other displays. If using another Sunton display simply download the json file for your board from [platformio-espressif32-sunton](https://github.com/rzeldent/platformio-espressif32-sunton) and save it in the `/DeskTicker_pio/boards` folder. Then update the platformio.ini file to include the new board. If using a different board you will need to provide your own appropriate libraries and drivers.
 
-Ensure you update the library references and adjust the screen dimensions accordingly.
+## Software Requirements
+The project requires the following software dependencies:
+- Platformio: used for compiling and flashing the firmware
+    - Libraries:
+      - rzeldent/esp32_smartdisplay
+	   - ottowinter/ESPAsyncWebServer-esphome
+	   - fbiego/ESP32Time
+	   - bblanchon/ArduinoJson
+- Squarline Studio: used to create and modify the UI
 
+<br>  
+<br>  
 
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
-## Contributions
-
+<details>
+<summary> Contributing</summary>  
 Contributions are welcome! If you find bugs or have ideas for improvements, feel free to open an issue or submit a pull request.
+</details>
+
 

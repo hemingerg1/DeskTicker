@@ -84,6 +84,11 @@
             max-width: 1000px;
         }
 
+        .chart-length-submit {
+            background-color: #4caf50;
+        }
+
+
         /* Table Styling */
         table {
             width: 75%;
@@ -143,10 +148,18 @@
 
     <h1>Ticker List</h1>
 
+    <!-- Chart Length Input -->
+    <div style="margin-bottom: 20px; text-align: center;">
+        <label for="chart-length" style="margin-right: 10px;">Chart Length (days):</label>
+        <input id="chart-length" type="number" min="1" max="365"
+            style="width: 80px; text-align: center; background-color: #333; color: #fff; border: none; padding: 5px; border-radius: 5px;">
+        <button id="chart-length-submit" style="padding: 6px 10px; background-color: #3076d1;">Submit Length</button>
+    </div>
+
     <!-- Table Buttons -->
     <div class="buttons-container">
         <button id="add-row-btn" class="add-row-btn">Add Row</button>
-        <button id="submit-btn">Submit Changes</button>
+        <button id="submit-btn">Submit Tickers</button>
         <button id="refresh-btn" class="refresh-btn">Refresh Data</button>
     </div>
 
@@ -177,6 +190,10 @@
 
     <script>
         const apiUrl = `${window.location.origin}/api/tickerlist`;
+        const histLengthUrl = `${window.location.origin}/api/histlength`;
+
+        const chartLengthInput = document.getElementById('chart-length');
+        const chartLengthSubmit = document.getElementById('chart-length-submit');
         const submitBtn = document.getElementById('submit-btn');
         const addRowBtn = document.getElementById('add-row-btn');
         const refreshBtn = document.getElementById('refresh-btn');
@@ -185,6 +202,43 @@
         const infoUrl = `${window.location.origin}/api/sysinfo`;
         const filesBtn = document.getElementById('files-btn');
         const filesUrl = `${window.location.origin}/api/list`;
+
+        // Initialize chart length input field
+        async function initializeChartLength() {
+            try {
+                const response = await fetch(histLengthUrl);
+                if (response.ok) {
+                    const length = await response.text();
+                    chartLengthInput.value = length;
+                } else {
+                    console.error('Failed to fetch initial chart length');
+                }
+            } catch (error) {
+                console.error('Error initializing chart length:', error);
+            }
+        }
+
+        // Submit chart length to the API
+        async function submitChartLength() {
+            const length = chartLengthInput.value;
+            try {
+                const response = await fetch(histLengthUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: length
+                });
+
+                if (response.ok) {
+                    alert('Chart length updated successfully!');
+                } else {
+                    alert('Failed to update chart length.');
+                }
+            } catch (error) {
+                console.error('Error submitting chart length:', error);
+            }
+        }
 
         // Utility function to parse CSV data into an array of objects
         function parseCSV(csv) {
@@ -399,6 +453,7 @@
         }
 
         // Add event listeners
+        chartLengthSubmit.addEventListener('click', submitChartLength);
         addRowBtn.addEventListener('click', addRow);
         submitBtn.addEventListener('click', submitData);
         refreshBtn.addEventListener('click', refreshData);
@@ -410,6 +465,7 @@
         });
 
         // Initialize the page by fetching data
+        initializeChartLength();
         fetchData();
     </script>
 </body>
