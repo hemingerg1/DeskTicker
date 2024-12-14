@@ -139,10 +139,10 @@ void ui_ScrHome_screen_init(void)
 
     ui_Chart1_Xaxis = lv_scale_create(ui_Chart1);
     lv_scale_set_mode(ui_Chart1_Xaxis, LV_SCALE_MODE_HORIZONTAL_BOTTOM);
-    lv_obj_set_size(ui_Chart1_Xaxis, lv_pct(100), 50);
+    lv_obj_set_size(ui_Chart1_Xaxis, lv_pct(100), 2);
     lv_obj_set_align(ui_Chart1_Xaxis, LV_ALIGN_BOTTOM_MID);
-    lv_obj_set_y(ui_Chart1_Xaxis, 50 + lv_obj_get_style_pad_bottom(ui_Chart1,
-                                                                   LV_PART_MAIN) + lv_obj_get_style_border_width(ui_Chart1, LV_PART_MAIN));
+    lv_obj_set_y(ui_Chart1_Xaxis, 2 + lv_obj_get_style_pad_bottom(ui_Chart1,
+                                                                  LV_PART_MAIN) + lv_obj_get_style_border_width(ui_Chart1, LV_PART_MAIN));
     lv_obj_set_style_line_width(ui_Chart1_Xaxis, 0, LV_PART_MAIN);
     lv_obj_set_style_line_width(ui_Chart1_Xaxis, 1, LV_PART_ITEMS);   //LVGL-9.1 ticks are thicker by default
     lv_obj_set_style_line_width(ui_Chart1_Xaxis, 1, LV_PART_INDICATOR);
@@ -200,7 +200,7 @@ void ui_ScrHome_screen_init(void)
     lv_obj_set_style_text_align(ui_Chart1_Yaxis2, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     //This workaround (an invisible outline) is needed because without it chart overflow-visible doesn't work in LVGL-9.1
-    lv_obj_set_style_outline_pad(ui_Chart1, LV_MAX3(50, 50, 2),
+    lv_obj_set_style_outline_pad(ui_Chart1, LV_MAX3(2, 50, 2),
                                  LV_PART_MAIN | LV_STATE_DEFAULT);   //workaround for ineffective 'overflow visible' flag
     lv_obj_set_style_outline_width(ui_Chart1, -1, LV_PART_MAIN | LV_STATE_DEFAULT);
     ui_imgSettingsBut = lv_image_create(ui_conChart);
@@ -214,7 +214,63 @@ void ui_ScrHome_screen_init(void)
     lv_obj_remove_flag(ui_imgSettingsBut, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
     lv_image_set_scale(ui_imgSettingsBut, 150);
     lv_obj_set_style_image_recolor(ui_imgSettingsBut, lv_color_hex(0x8B8B8B), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_image_recolor_opa(ui_imgSettingsBut, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_image_recolor_opa(ui_imgSettingsBut, 100, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_panOldData = lv_obj_create(ui_conChart);
+    lv_obj_set_width(ui_panOldData, lv_pct(90));
+    lv_obj_set_height(ui_panOldData, lv_pct(80));
+    lv_obj_set_align(ui_panOldData, LV_ALIGN_CENTER);
+    lv_obj_set_flex_flow(ui_panOldData, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(ui_panOldData, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+    lv_obj_add_flag(ui_panOldData, LV_OBJ_FLAG_HIDDEN);     /// Flags
+    lv_obj_remove_flag(ui_panOldData, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    lv_obj_set_style_bg_color(ui_panOldData, lv_color_hex(0x4A4C4A), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(ui_panOldData, 170, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(ui_panOldData, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_left(ui_panOldData, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(ui_panOldData, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(ui_panOldData, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(ui_panOldData, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_labOldDataWarn = lv_label_create(ui_panOldData);
+    lv_obj_set_width(ui_labOldDataWarn, lv_pct(100));
+    lv_obj_set_height(ui_labOldDataWarn, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_labOldDataWarn, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_labOldDataWarn, "Warning: data appears to be outdated.");
+    lv_obj_set_style_text_color(ui_labOldDataWarn, lv_color_hex(0xEB6666), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui_labOldDataWarn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui_labOldDataWarn, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_labOldDataWarn, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_labOldDataDate = lv_label_create(ui_panOldData);
+    lv_obj_set_width(ui_labOldDataDate, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_labOldDataDate, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_labOldDataDate, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_labOldDataDate, "Last date = xx/xx");
+    lv_obj_set_style_text_font(ui_labOldDataDate, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_labStartDate = lv_label_create(ui_conChart);
+    lv_obj_set_width(ui_labStartDate, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_labStartDate, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_labStartDate, 2);
+    lv_obj_set_y(ui_labStartDate, 3);
+    lv_label_set_text(ui_labStartDate, "xx/xx");
+    lv_obj_set_style_text_color(ui_labStartDate, lv_color_hex(0x808080), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui_labStartDate, 160, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui_labStartDate, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_labStartDate, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_labEndDate = lv_label_create(ui_conChart);
+    lv_obj_set_width(ui_labEndDate, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_labEndDate, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_labEndDate, -48);
+    lv_obj_set_y(ui_labEndDate, 3);
+    lv_obj_set_align(ui_labEndDate, LV_ALIGN_TOP_RIGHT);
+    lv_label_set_text(ui_labEndDate, "xx/xx");
+    lv_obj_set_style_text_color(ui_labEndDate, lv_color_hex(0x808080), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui_labEndDate, 160, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui_labEndDate, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_labEndDate, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_add_event_cb(ui_imgSettingsBut, ui_event_imgSettingsBut, LV_EVENT_ALL, NULL);
 

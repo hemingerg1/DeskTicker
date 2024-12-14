@@ -153,7 +153,7 @@ void updateChart(const ticker tic)
                 int month = lastDate.substring(5, 7).toInt();
                 int day = lastDate.substring(8, 10).toInt();
 
-                // if today substitute price for ticker current price
+                // if today is in csv file substitute price for ticker current price
                 if (month == rtc.getMonth() + 1 && day == rtc.getDay())
                 {
                     chartDataArray[i - 1] = int(tic.price * 100);
@@ -174,7 +174,20 @@ void updateChart(const ticker tic)
                 chartDataArray[i - 1] = chartDataArray[i - 2];
             }
         }
+        String startdt = table.readCell(1, 0);
+        String enddt = table.readCell(len, 0);
         xSemaphoreGive(SDmutex);
+
+        // check if end date is older than 3 days, if so display a warning
+        if (isDateOlderThan3Days(enddt))
+        {
+            lv_label_set_text_fmt(ui_labOldDataDate, "Last Date: %s", enddt.c_str());
+            lv_obj_remove_flag(ui_panOldData, LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_add_flag(ui_panOldData, LV_OBJ_FLAG_HIDDEN);
+        }
 
         // if market is open and csv filed didn't contain today's date, add today's price to the end of the array
         if (addToday)
@@ -182,7 +195,16 @@ void updateChart(const ticker tic)
             chartDataArray[len] = int(tic.price * 100);
             Serial.println("add today: " + String(chartDataArray[len]));
             len++;
+
+            lv_label_set_text_fmt(ui_labEndDate, "%d/%d", rtc.getMonth() + 1, rtc.getDay());
         }
+        else
+        {
+            lv_label_set_text_fmt(ui_labEndDate, "%d/%d", enddt.substring(5, 7).toInt(), enddt.substring(8, 10).toInt());
+        }
+
+        // set chart start date label
+        lv_label_set_text_fmt(ui_labStartDate, "%d/%d", startdt.substring(5, 7).toInt(), startdt.substring(8, 10).toInt());
 
         // adjust X axis for the data length
         lv_chart_set_point_count(ui_Chart1, len);
@@ -208,6 +230,42 @@ void updateChart(const ticker tic)
     {
         xSemaphoreGive(SDmutex);
     }
+}
+
+// Function to check if a given date is older than 3 days
+bool isDateOlderThan3Days(const String &dateString)
+{
+    struct tm inputDate = {0};
+
+    // Parse the input date string (YYYY-MM-DD)
+    if (sscanf(dateString.c_str(), "%d-%d-%d", &inputDate.tm_year, &inputDate.tm_mon, &inputDate.tm_mday) != 3)
+    {
+        Serial.println("Error: Invalid date format. Use YYYY-MM-DD.");
+        return false;
+    }
+
+    // Adjust year and month to match tm structure expectations
+    inputDate.tm_year -= 1900;
+    inputDate.tm_mon -= 1;
+
+    // Convert input date to time_t
+    time_t inputTime = mktime(&inputDate);
+    if (inputTime == -1)
+    {
+        Serial.println("Error: Unable to convert input date to time.");
+        return false;
+    }
+
+    // Get the current time
+    time_t now;
+    time(&now);
+
+    // Calculate the difference in seconds between now and the input date
+    double differenceInSeconds = difftime(now, inputTime);
+
+    // Convert seconds to days and check if greater than 3 days
+    double daysDifference = differenceInSeconds / (60 * 60 * 24);
+    return daysDifference > 3;
 }
 
 // callback function to format the chart y-axis labels

@@ -36,6 +36,11 @@ extern lv_obj_t * ui_Chart1_Yaxis1;
 extern lv_obj_t * ui_Chart1_Yaxis2;
 void ui_event_imgSettingsBut(lv_event_t * e);
 extern lv_obj_t * ui_imgSettingsBut;
+extern lv_obj_t * ui_panOldData;
+extern lv_obj_t * ui_labOldDataWarn;
+extern lv_obj_t * ui_labOldDataDate;
+extern lv_obj_t * ui_labStartDate;
+extern lv_obj_t * ui_labEndDate;
 // CUSTOM VARIABLES
 
 // SCREEN: ui_ScrSleep

@@ -27,6 +27,11 @@ lv_obj_t * ui_Chart1_Yaxis1;
 lv_obj_t * ui_Chart1_Yaxis2;
 void ui_event_imgSettingsBut(lv_event_t * e);
 lv_obj_t * ui_imgSettingsBut;
+lv_obj_t * ui_panOldData;
+lv_obj_t * ui_labOldDataWarn;
+lv_obj_t * ui_labOldDataDate;
+lv_obj_t * ui_labStartDate;
+lv_obj_t * ui_labEndDate;
 // CUSTOM VARIABLES
 
 

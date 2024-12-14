@@ -19,6 +19,7 @@ void uiTask(void *parameters);
 /***********************************************************************/
 void updateHomeScreen(ticker tic);
 void updateChart(ticker tic);
+bool isDateOlderThan3Days(const String &dateString);
 static void draw_event_cb(lv_event_t *e);
 void displaySleep();
 void updateSleepScreen();
