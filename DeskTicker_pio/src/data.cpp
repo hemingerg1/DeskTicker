@@ -64,6 +64,11 @@ void dataTask(void *parameters)
         {
             Serial.println("Updating ticker list and data");
             tickerListUpdate();
+            for (int i = 0; i < numTickers; i++)
+            {
+                getTodayData(i);
+                vTaskDelay(5000);
+            }
             updateTickerList = false;
         }
 

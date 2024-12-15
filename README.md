@@ -2,8 +2,7 @@
 
 DeskTicker is a compact and customizable stock display designed for a small display module. This project was originally designed for the ESP32-2432S032 board but could be easily adapted to other Arduino compatible displays. It displays current stock prices and daily changes, along with a visual chart of daily data. DeskTicker also includes a user-friendly web interface for managing the list of stocks to display.
 
-<p align="center"><img src="assests/imgs/homeScreen.png"></p>  
-<p align="center"><img src="assests/imgs/settingsScreen.png"></p>
+<p align="center"><img src="assests/imgs/homeScreen.png">&emsp;<img src="assests/imgs/settingsScreen.png"></p>  
 
 ## Features
 

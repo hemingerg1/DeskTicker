@@ -212,13 +212,13 @@ void updateChart(const ticker tic)
         // adjust Y axis range
         int *loc_min = std::min_element(chartDataArray, chartDataArray + len - 1);
         int *loc_max = std::max_element(chartDataArray, chartDataArray + len - 1);
-        int data_min = *loc_min - 500;
-        int data_max = *loc_max + 200;
-        int mean = (data_min + data_max) / 2;
-        int soft_min = mean * 0.95;
-        int soft_max = mean + 1.05;
-        uint cmax = max(data_max, soft_max);
-        uint cmin = min(data_min, soft_min);
+        int data_min = *loc_min; // data is already * 100
+        int data_max = *loc_max; // data is already * 100
+        // int mean = (data_min + data_max) / 2;
+        int soft_min = data_min * 0.98;
+        int soft_max = data_max * 1.02;
+        uint cmax = max(data_max + 200, soft_max);
+        uint cmin = min(data_min - 500, soft_min);
         cmax = ((cmax + 99) / 100) * 100; // round up to nearest 100
         cmin = ((cmin - 99) / 100) * 100; // round down to nearest 100
         lv_chart_set_range(ui_Chart1, LV_CHART_AXIS_SECONDARY_Y, cmin, cmax);
@@ -290,7 +290,7 @@ static void draw_event_cb(lv_event_t *e)
             float val = (float)base_dsc->id2 / 100.0;
             if (val > 100)
             {
-                lv_snprintf(tmp_buffer, sizeof(tmp_buffer), "%d", val);
+                lv_snprintf(tmp_buffer, sizeof(tmp_buffer), "%d", int(val));
             }
             else
             {
@@ -307,36 +307,29 @@ static void draw_event_cb(lv_event_t *e)
 void displaySleep()
 {
     int inactMin = lv_disp_get_inactive_time(NULL) / 1000 / 60;
-    // increase sleep timeout if market is open
+    int adjustTimeout = screenTimeout;
+
+    // adjust sleep timeout if market is open or overnight
     if (marketOpen)
     {
-        if (!screenSleep && inactMin >= screenTimeout * 6)
-        {
-            smartdisplay_lcd_set_backlight(0.05);
-            lv_scr_load(ui_ScrSleep);
-            screenSleep = true;
-        }
-        else if (screenSleep && inactMin < screenTimeout * 6)
-        {
-            smartdisplay_lcd_set_backlight(0.7);
-            lv_scr_load(ui_ScrHome);
-            screenSleep = false;
-        }
+        adjustTimeout = screenTimeout * 6;
     }
-    else
+    else if (rtc.getHour() >= 20 || rtc.getHour() < 8)
     {
-        if (!screenSleep && inactMin >= screenTimeout)
-        {
-            smartdisplay_lcd_set_backlight(0.05);
-            lv_scr_load(ui_ScrSleep);
-            screenSleep = true;
-        }
-        else if (screenSleep && inactMin < screenTimeout)
-        {
-            smartdisplay_lcd_set_backlight(0.7);
-            lv_scr_load(ui_ScrHome);
-            screenSleep = false;
-        }
+        adjustTimeout = screenTimeout / 3;
+    }
+
+    if (!screenSleep && inactMin >= adjustTimeout)
+    {
+        smartdisplay_lcd_set_backlight(0.05);
+        lv_scr_load(ui_ScrSleep);
+        screenSleep = true;
+    }
+    else if (screenSleep && inactMin < adjustTimeout)
+    {
+        smartdisplay_lcd_set_backlight(0.7);
+        lv_scr_load(ui_ScrHome);
+        screenSleep = false;
     }
 }
 
