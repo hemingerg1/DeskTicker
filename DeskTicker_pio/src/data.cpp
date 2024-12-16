@@ -11,7 +11,12 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
+#include "esp_log.h"
+#include "esp32-hal-log.h"
+
 #define PRINT_HEADERS false
+
+static const char *myTAG = "data.cpp";
 
 MyTable listTable(tickerListFilePath);
 
@@ -255,6 +260,7 @@ String getHistoricData(const String symbol, int length)
         if (j > 0)
         {
             Serial.println("Attempt " + String(j + 1) + " to get todays price for " + symbol);
+            ESP_LOGW(myTAG, "Attempt %d failed to get todays price for %s", j, symbol);
             Serial.println("Waiting " + String(10 * j) + " seconds before retrying...");
         }
         vTaskDelay(10000 * j);

@@ -46,6 +46,7 @@ void webTask(void *parameters)
 
     server.on("/api/list", HTTP_GET, handleListFiles);  // List all files in the filesystem
     server.on("/api/sysinfo", HTTP_GET, handleSysInfo); // Get system information
+    server.on("/api/log", HTTP_GET, handleLog);         // send log file
 
     // web page not found
     server.onNotFound([](AsyncWebServerRequest *request)
@@ -158,6 +159,9 @@ void handleSysInfo(AsyncWebServerRequest *request)
     result += "  \"Chip Cores\": " + String(ESP.getChipCores()) + ",\n";
     result += "  \"Chip Revision\": " + String(ESP.getChipRevision()) + ",\n";
     result += "  \"flashSize\": " + String(ESP.getFlashChipSize()) + ",\n";
+    result += "  \"uiTask HighWater\": " + String(uxTaskGetStackHighWaterMark(uiTaskHandle)) + ",\n";
+    result += "  \"dataTask HighWater\": " + String(uxTaskGetStackHighWaterMark(dataTaskHandle)) + ",\n";
+    result += "  \"webTask HighWater\": " + String(uxTaskGetStackHighWaterMark(webTaskHandle)) + ",\n";
     result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
     result += "  \"minimumFreeHeap\": " + String(ESP.getMinFreeHeap()) + ",\n";
     xSemaphoreTake(SDmutex, portMAX_DELAY);
@@ -221,4 +225,20 @@ void handleHistLengthPost(AsyncWebServerRequest *request, uint8_t *data, size_t 
     {
         request->send(500, "text/plain", "Error receiving history length.");
     }
+}
+
+// Function to serve the log file from SD card
+void handleLog(AsyncWebServerRequest *request)
+{
+    String filePath = String(logFileDir) + "/" + String(logFileNum) + ".txt";
+    xSemaphoreTake(SDmutex, portMAX_DELAY);
+    if (!SD.exists(filePath))
+    {
+        request->send(500, "text/plain", "Failed to read LOG file from SD card.");
+        xSemaphoreGive(SDmutex);
+        return;
+    }
+    Serial.println("Webserver: Sending log file");
+    request->send(SD, filePath, "text/plain");
+    xSemaphoreGive(SDmutex);
 }

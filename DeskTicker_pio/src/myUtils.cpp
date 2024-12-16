@@ -11,8 +11,12 @@
 #include "uiFiles/ui.h"
 
 /***********************************************************************/
-/*****************************  ESP Utils  *****************************/
+/*****************************  Basic Utils  ***************************/
 /***********************************************************************/
+TaskHandle_t uiTaskHandle = NULL;
+TaskHandle_t dataTaskHandle = NULL;
+TaskHandle_t webTaskHandle = NULL;
+
 SemaphoreHandle_t prefsmutex = NULL;
 ESP32Time rtc(0);
 Preferences prefs;
@@ -234,3 +238,122 @@ bool updateHistLength = false;
 ushort numTickers = 0;
 bool marketOpen = false;
 ticker tickerList[maxTickers];
+
+/***********************************************************************/
+/*****************************  Logging Utils  *************************/
+/***********************************************************************/
+ushort logFileNum = 0;
+const char *logFileDir = "/logs";
+const size_t logBuf_size = 1024;
+char logBuf[logBuf_size];
+
+// fucntion to init log file number at start up
+void logFilesInit()
+{
+    xSemaphoreTake(SDmutex, portMAX_DELAY);
+
+    // check if logs directory exists and create it if not
+    if (!SD.exists(logFileDir))
+    {
+        SD.mkdir(logFileDir);
+    }
+
+    // get the largest file name
+    File dir = SD.open(logFileDir);
+    while (File file = dir.openNextFile())
+    {
+        String filename = file.name();
+        ushort fileNum = filename.substring(0, filename.length() - 4).toInt();
+
+        if (fileNum > logFileNum)
+        {
+            logFileNum = fileNum;
+        }
+        file.close();
+    }
+    dir.rewindDirectory();
+    dir.close();
+
+    deleteOldLogFiles();
+
+    xSemaphoreGive(SDmutex);
+}
+
+// function to add log message to buffer
+int handleNewLogMessage(const char *format, va_list args)
+{
+    Serial.println("Log message callback running");
+
+    // format message in a temp buffer
+    char tempBuf[128] = "";
+    int ret = vsnprintf(tempBuf, sizeof(tempBuf), format, args);
+
+    // Check the length of the current buffer and the formatted message
+    size_t currentLength = strlen(logBuf);
+    size_t messageLength = strlen(tempBuf);
+
+    // Check if the message will fit in the remaining buffer space
+    if (currentLength + messageLength + 1 >= logBuf_size)
+    {
+        saveLogToSD();
+        currentLength = strlen(logBuf);
+    }
+
+    strncat(logBuf, tempBuf, logBuf_size - currentLength - 1);
+
+    return ret;
+}
+
+// function to save log buffer to sd card then empty buffer
+void saveLogToSD()
+{
+    Serial.println("Saving log buffer to SD card");
+
+    xSemaphoreTake(SDmutex, portMAX_DELAY);
+
+    // Write buffer to file
+    File file = SD.open(String(logFileDir) + "/" + String(logFileNum) + ".txt", FILE_APPEND);
+    file.print(logBuf);
+
+    // If log file is too large create a new file
+    if (file.size() > 100000)
+    {
+        logFileNum++;
+        File newFile = SD.open(String(logFileDir) + "/" + String(logFileNum) + ".txt", FILE_WRITE);
+        newFile.close();
+        deleteOldLogFiles();
+    }
+
+    file.close();
+
+    // reset the buffer
+    logBuf[0] = '\0';
+
+    xSemaphoreGive(SDmutex);
+}
+
+// function to delete old log files
+void deleteOldLogFiles()
+{
+    Serial.println("Checking for old log files to delete");
+
+    File dir = SD.open(logFileDir);
+    while (File file = dir.openNextFile())
+    {
+        String filename = file.name();
+        ushort fileNum = filename.substring(0, filename.length() - 4).toInt();
+
+        if (fileNum < logFileNum - 1 && logFileNum > 1)
+        {
+            file.close();
+            Serial.println("Deleting log file " + filename);
+            SD.remove(String(logFileDir) + "/" + filename);
+        }
+        else
+        {
+            file.close();
+        }
+    }
+    dir.rewindDirectory();
+    dir.close();
+}

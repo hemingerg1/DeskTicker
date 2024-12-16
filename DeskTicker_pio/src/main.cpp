@@ -1,10 +1,6 @@
 #include <Arduino.h>
 
 #include <WiFi.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <freertos/queue.h>
-#include <freertos/semphr.h>
 #include <SD.h>
 #include <ESP32Time.h>
 
@@ -14,10 +10,6 @@
 #include "web.hpp"
 
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"
-
-TaskHandle_t uiTaskHandle = NULL;
-TaskHandle_t dataTaskHandle = NULL;
-TaskHandle_t webTaskHandle = NULL;
 
 SET_LOOP_TASK_STACK_SIZE(3072);
 
@@ -50,6 +42,14 @@ void setup()
     return;
   }
   printSdUssage();
+
+  // get the latest log file
+  logFilesInit();
+
+  // set log levels and callback
+  esp_log_level_set("*", ESP_LOG_WARN);
+  esp_log_level_set("myApp", ESP_LOG_INFO);
+  esp_log_set_vprintf(handleNewLogMessage);
 
   // get ui settings for NVS
   settingsInit();

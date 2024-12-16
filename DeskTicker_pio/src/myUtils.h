@@ -13,8 +13,12 @@
 #include <freertos/semphr.h>
 
 /***********************************************************************/
-/*****************************  ESP Utils  *****************************/
+/*****************************  Basic Utils  ***************************/
 /***********************************************************************/
+extern TaskHandle_t uiTaskHandle;
+extern TaskHandle_t dataTaskHandle;
+extern TaskHandle_t webTaskHandle;
+
 extern SemaphoreHandle_t prefsmutex;
 extern ESP32Time rtc;
 extern Preferences prefs;
@@ -66,3 +70,15 @@ struct ticker
 } extern tickerList[];
 
 #endif
+
+/***********************************************************************/
+/*****************************  Logging Utils  *************************/
+/***********************************************************************/
+extern ushort logFileNum;
+extern const char *logFileDir;
+extern char logBuf[];
+
+void logFilesInit();
+int handleNewLogMessage(const char *format, va_list args);
+void saveLogToSD();
+void deleteOldLogFiles();
