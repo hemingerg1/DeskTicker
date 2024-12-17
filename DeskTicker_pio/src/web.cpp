@@ -10,6 +10,8 @@
 
 AsyncWebServer server(80);
 
+static const char *myTAG = "web.cpp";
+
 // used for url not found
 static const char notFoundContent[] PROGMEM = R""""(
 <html>
@@ -28,7 +30,7 @@ static const char notFoundContent[] PROGMEM = R""""(
 
 void webTask(void *parameters)
 {
-    Serial.println("Starting webserver task.....");
+    // Serial.println("Starting webserver task.....");
 
     server.on("/", HTTP_GET, handleRoot);                        // Serve the HTML file
     server.on("/api/tickerlist", HTTP_GET, handleApiGet);        // Get the ticker list file
@@ -53,7 +55,8 @@ void webTask(void *parameters)
                       { request->send(404, "text/html", FPSTR(notFoundContent)); });
 
     server.begin();
-    Serial.printf("**** Webserver started at <http://%s> or <http://%s> ****\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+
+    ESP_LOGI(myTAG, "**** Webserver started at <http://%s> or <http://%s> ****\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
     while (1)
     {
@@ -76,7 +79,7 @@ void handleRoot(AsyncWebServerRequest *request)
         xSemaphoreGive(SDmutex);
         return;
     }
-    Serial.println("Webserver: Sending index.html");
+    ESP_LOGD(myTAG, "Webserver: Sending index.html");
     request->send(SD, htmlFilePath, "text/html");
     xSemaphoreGive(SDmutex);
 }
@@ -91,7 +94,7 @@ void handleApiGet(AsyncWebServerRequest *request)
         xSemaphoreGive(SDmutex);
         return;
     }
-    Serial.println("Webserver: Sending tickerList.csv");
+    ESP_LOGD(myTAG, "Webserver: Sending tickerList.csv");
     request->send(SD, tickerListFilePath, "text/csv");
     xSemaphoreGive(SDmutex);
 }
@@ -99,7 +102,7 @@ void handleApiGet(AsyncWebServerRequest *request)
 // Function to handle POST requests (POST /api/tickerlist)
 void handleTicListPost(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
 {
-    Serial.println("Webserver: Received POST request for /api/tickerlist");
+    ESP_LOGD(myTAG, "Webserver: Received POST request for /api/tickerlist");
 
     if (request->method() != HTTP_POST)
     {
@@ -116,8 +119,8 @@ void handleTicListPost(AsyncWebServerRequest *request, uint8_t *data, size_t len
     // Check if all data has been received
     if (index + len == total)
     {
-        Serial.println("Webserver: Received CSV data");
-        Serial.println(csvData);
+        ESP_LOGD(myTAG, "Webserver: Received CSV data");
+        ESP_LOGD(myTAG, "%s", csvData);
         // Create or open the CSV file for writing
         xSemaphoreTake(SDmutex, portMAX_DELAY);
         File file = SD.open(tickerListFilePath, FILE_WRITE);
@@ -143,7 +146,7 @@ void handleTicListPost(AsyncWebServerRequest *request, uint8_t *data, size_t len
 // Called when the WebServer was requested to list all existing files in the filesystem. JSON array with file information is returned.
 void handleListFiles(AsyncWebServerRequest *request)
 {
-    Serial.println("Webserver: Sending files list");
+    ESP_LOGD(myTAG, "Webserver: Sending files list");
     AsyncWebServerResponse *response = request->beginResponse(200, "text/javascript; charset=utf-8", listDir(SD, "/"));
     response->addHeader("Cache-Control", "no-cache");
     request->send(response);
@@ -152,7 +155,7 @@ void handleListFiles(AsyncWebServerRequest *request)
 // This function is called when the sysInfo service was requested.
 void handleSysInfo(AsyncWebServerRequest *request)
 {
-    Serial.println("Webserver: Sending system info");
+    ESP_LOGD(myTAG, "Webserver: Sending system info");
     String result;
     result += "{\n";
     result += "  \"Chip Model\": " + String(ESP.getChipModel()) + ",\n";
@@ -178,13 +181,14 @@ void handleSysInfo(AsyncWebServerRequest *request)
 // Function to get the history length (GET /api/histlength)
 void handleHistLengthGet(AsyncWebServerRequest *request)
 {
+    ESP_LOGD(myTAG, "Webserver: Sending history length");
     request->send(200, "text/plain", String(priceHistLen));
 }
 
 // Function to handle POST requests history length (POST /api/histlength)
 void handleHistLengthPost(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
 {
-    Serial.println("Webserver: Received POST request for /api/histlength");
+    ESP_LOGD(myTAG, "Webserver: Received POST request for /api/histlength");
 
     if (request->method() != HTTP_POST)
     {
@@ -202,8 +206,7 @@ void handleHistLengthPost(AsyncWebServerRequest *request, uint8_t *data, size_t 
     // Check if all data has been received
     if (index + len == total)
     {
-        Serial.print("Webserver: Received history length change to = ");
-        Serial.println(priceHistLen);
+        ESP_LOGD(myTAG, "Webserver: Received history length change to = %d", priceHistLen);
 
         // Save the new history length to the NVS
         xSemaphoreTake(prefsmutex, portMAX_DELAY);
@@ -238,7 +241,7 @@ void handleLog(AsyncWebServerRequest *request)
         xSemaphoreGive(SDmutex);
         return;
     }
-    Serial.println("Webserver: Sending log file");
+    ESP_LOGD(myTAG, "Webserver: Sending log file");
     request->send(SD, filePath, "text/plain");
     xSemaphoreGive(SDmutex);
 }

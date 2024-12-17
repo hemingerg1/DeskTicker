@@ -10,6 +10,8 @@
 
 #include "uiFiles/ui.h"
 
+static const char *myTAG = "myUtils.cpp";
+
 /***********************************************************************/
 /*****************************  Basic Utils  ***************************/
 /***********************************************************************/
@@ -38,7 +40,7 @@ void settingsInit()
     }
     else
     {
-        Serial.println("*********Error opening NVS storage*********");
+        ESP_LOGE(myTAG, "*********Error opening NVS storage*********");
     }
     xSemaphoreGive(prefsmutex);
 }
@@ -48,13 +50,14 @@ void wificon(void)
 {
     WiFi.disconnect(true);
     delay(500);
-    WiFi.setHostname("DeskDisplay");
+    WiFi.setHostname("DeskTicker");
     WiFi.mode(WIFI_STA);
 
     // get SSID and PASSWORD from NVS storage
     String SSID = "";
     String PASSWORD = "";
-    Serial.print("Getting SSID and PASSWORD from NVS storage...");
+    ESP_LOGD(myTAG, "Getting SSID and PASSWORD from NVS storage...");
+    int i = 0;
     while (SSID == "" || PASSWORD == "")
     {
         xSemaphoreTake(prefsmutex, portMAX_DELAY);
@@ -66,24 +69,28 @@ void wificon(void)
 
         if (SSID == "" || PASSWORD == "")
         {
+            if (i == 0)
+            {
+                ESP_LOGI(myTAG, "WIFI credentials not found");
+            }
+            i++;
             vTaskDelay(5000);
         }
     }
     noWifiInit = false;
 
     // connect to wifi
-    Serial.print("\nConnecting to WiFi...");
+    ESP_LOGD(myTAG, "Connecting to WiFi...");
     WiFi.begin(SSID, PASSWORD);
     vTaskDelay(500);
     int t = 0;
     while (WiFi.status() != WL_CONNECTED)
     {
         t++;
-        Serial.print('.');
         vTaskDelay(500);
         if (t > 20)
         {
-            Serial.println("Unable to connect to WiFi.");
+            ESP_LOGW(myTAG, "Unable to connect to WiFi.");
             reboot();
         }
     }
@@ -91,7 +98,7 @@ void wificon(void)
     lv_label_set_text_fmt(ui_labWebAddress, "http://%s", WiFi.localIP().toString().c_str());
     lv_textarea_set_text(ui_taWifiSsid, SSID.c_str());
 
-    Serial.println("WiFi connected. IP = " + WiFi.localIP().toString());
+    ESP_LOGI(myTAG, "WiFi connected. IP = %s", WiFi.localIP().toString());
 }
 
 // function to sync the ESP32's rtc with NTP server
@@ -100,30 +107,29 @@ void timeSync(const char *tzInfo, const char *ntpServer1, const char *ntpServer2
     configTzTime(tzInfo, ntpServer1, ntpServer2);
 
     // Wait till time is synced
-    Serial.print("Syncing time");
+    ESP_LOGD(myTAG, "Syncing time");
     int i = 0;
     while (time(nullptr) < 1000000000l && i < 40)
     {
-        Serial.print(".");
         delay(500);
         i++;
     }
 
     // Show time
     time_t tnow = time(nullptr);
-    Serial.print("Synchronized time: ");
-    Serial.println(ctime(&tnow));
+    ESP_LOGI(myTAG, "Synchronized time: %s", ctime(&tnow));
 
     // if time synce failed, reboot
     if (rtc.getYear() < 2020)
     {
+        ESP_LOGE(myTAG, "Time sync failed, rebooting...");
         reboot();
     }
 }
 
 void reboot(void)
 {
-    Serial.println(F("Rebooting..."));
+    ESP_LOGW(myTAG, "Rebooting...");
     delay(2000);
     ESP.restart();
 }
@@ -139,7 +145,7 @@ const char *tickerListFilePath = "/tickerList.csv";
 // Function to return a list of all files in the SD card
 String listDir(fs::FS &fs, const char *dirname)
 {
-    Serial.printf("Listing directory: %s\n", dirname);
+    ESP_LOGD(myTAG, "Listing directory: %s\n", dirname);
     String result;
     xSemaphoreTake(SDmutex, portMAX_DELAY);
     File root = fs.open(dirname, "r");
@@ -214,17 +220,17 @@ String listDir(fs::FS &fs, const char *dirname)
     return result;
 }
 
-// Serial print the SD card usage
+// print the SD card usage
 void printSdUssage(void)
 {
-    Serial.println("-------- SD Card usage --------");
+    ESP_LOGD(myTAG, "-------- SD Card usage --------");
     xSemaphoreTake(SDmutex, portMAX_DELAY);
     float totalMBytes = SD.totalBytes() / (1024 * 1024);
     float usedKBytes = SD.usedBytes() / (1024);
-    Serial.printf("SD Card Total Size (MB): %.2f\n", totalMBytes);
-    Serial.printf("SD Card Used Space (kB): %.2f\n", usedKBytes);
+    ESP_LOGD(myTAG, "SD Card Total Size (MB): %.2f\n", totalMBytes);
+    ESP_LOGD(myTAG, "SD Card Used Space (kB): %.2f\n", usedKBytes);
     xSemaphoreGive(SDmutex);
-    Serial.println("--------------------------------");
+    ESP_LOGD(myTAG, "--------------------------------");
 }
 
 /***********************************************************************/
@@ -255,6 +261,7 @@ void logFilesInit()
     // check if logs directory exists and create it if not
     if (!SD.exists(logFileDir))
     {
+        ESP_LOGI(myTAG, "Log files directory does not exist. Creating it now.");
         SD.mkdir(logFileDir);
     }
 
@@ -274,6 +281,8 @@ void logFilesInit()
     dir.rewindDirectory();
     dir.close();
 
+    ESP_LOGD(myTAG, "Current log file %d.txt", logFileNum);
+
     deleteOldLogFiles();
 
     xSemaphoreGive(SDmutex);
@@ -282,7 +291,7 @@ void logFilesInit()
 // function to add log message to buffer
 int handleNewLogMessage(const char *format, va_list args)
 {
-    Serial.println("Log message callback running");
+    ESP_LOGV(myTAG, "Log message callback running");
 
     // format message in a temp buffer
     char tempBuf[128] = "";
@@ -295,6 +304,7 @@ int handleNewLogMessage(const char *format, va_list args)
     // Check if the message will fit in the remaining buffer space
     if (currentLength + messageLength + 1 >= logBuf_size)
     {
+        ESP_LOGV(myTAG, "Log message will not fit in buffer. Saving buffer to file.");
         saveLogToSD();
         currentLength = strlen(logBuf);
     }
@@ -307,7 +317,7 @@ int handleNewLogMessage(const char *format, va_list args)
 // function to save log buffer to sd card then empty buffer
 void saveLogToSD()
 {
-    Serial.println("Saving log buffer to SD card");
+    ESP_LOGV(myTAG, "Saving log buffer to SD card");
 
     xSemaphoreTake(SDmutex, portMAX_DELAY);
 
@@ -335,7 +345,7 @@ void saveLogToSD()
 // function to delete old log files
 void deleteOldLogFiles()
 {
-    Serial.println("Checking for old log files to delete");
+    ESP_LOGV(myTAG, "Checking for old log files to delete");
 
     File dir = SD.open(logFileDir);
     while (File file = dir.openNextFile())
@@ -346,7 +356,7 @@ void deleteOldLogFiles()
         if (fileNum < logFileNum - 1 && logFileNum > 1)
         {
             file.close();
-            Serial.println("Deleting log file " + filename);
+            ESP_LOGD(myTAG, "Deleting log file %s", filename);
             SD.remove(String(logFileDir) + "/" + filename);
         }
         else

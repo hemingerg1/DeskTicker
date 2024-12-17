@@ -36,7 +36,7 @@ const char *userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gec
 /***********************************************************************/
 void dataTask(void *parameters)
 {
-    Serial.println("Starting dataTask");
+    // Serial.println("Starting dataTask");
 
     // check if the market is open
     isMarketOpen();
@@ -50,7 +50,7 @@ void dataTask(void *parameters)
     {
         if (!isCsvFileDataUpToDate(tickerList[i].symbol))
         {
-            Serial.println(tickerList[i].symbol + ".csv is outdated. Updating now...");
+            ESP_LOGD(myTAG, "%s.csv is outdated. Updating now...", tickerList[i].symbol);
             updateCsvFile(i);
             vTaskDelay(5000);
         }
@@ -67,7 +67,7 @@ void dataTask(void *parameters)
         // updates data if ticker list is changed from web page
         if (updateTickerList)
         {
-            Serial.println("Updating ticker list and data");
+            ESP_LOGD(myTAG, "Updating ticker list and data");
             tickerListUpdate();
             for (int i = 0; i < numTickers; i++)
             {
@@ -79,7 +79,7 @@ void dataTask(void *parameters)
 
         if (updateHistLength)
         {
-            Serial.println("Updating CSV files with new historic data length");
+            ESP_LOGD(myTAG, "Updating CSV files with new historic data length");
             updateAllCsvFiles();
             updateHistLength = false;
         }
@@ -120,21 +120,21 @@ void loadTickers(void)
     if (listTable.countCols() == tickerListColNum)
     {
         numTickers = listTable.countRows() - 1;
-        Serial.printf("Number of Tickers: %d\n", numTickers);
+        ESP_LOGV(myTAG, "Number of Tickers: %d\n", numTickers);
         xSemaphoreTake(TickListmutex, portMAX_DELAY);
-        Serial.println("Ticker List:");
+        ESP_LOGV(myTAG, "Ticker List:");
         for (int row = 0; row < numTickers; row++)
         {
             tickerList[row].id = listTable.readCell(row + 1, 0).toInt();
             tickerList[row].symbol = listTable.readCell(row + 1, 1);
             tickerList[row].disc = listTable.readCell(row + 1, 2);
-            Serial.printf("%d, %s, %s\n", tickerList[row].id, tickerList[row].symbol.c_str(), tickerList[row].disc.c_str());
+            ESP_LOGV(myTAG, "%d, %s, %s\n", tickerList[row].id, tickerList[row].symbol.c_str(), tickerList[row].disc.c_str());
         }
         xSemaphoreGive(TickListmutex);
     }
     else
     {
-        Serial.println("ERROR: Ticker list CSV file was not parsed correctly.");
+        ESP_LOGE(myTAG, "ERROR: Ticker list CSV file was not parsed correctly.");
     }
     xSemaphoreGive(SDmutex);
 }
@@ -147,7 +147,7 @@ void tickerListUpdate(void)
     File dir = SD.open("/data");
     if (!dir)
     {
-        Serial.println("Could not open /data directory.");
+        ESP_LOGE(myTAG, "Could not open /data directory.");
         xSemaphoreGive(SDmutex);
         return;
     }
@@ -172,8 +172,7 @@ void tickerListUpdate(void)
         // If the symbol is not in the tickerList, delete the CSV file
         if (!found)
         {
-            Serial.print("Deleting file: ");
-            Serial.println(filename);
+            ESP_LOGI(myTAG, "Deleting file: %s", filename);
             SD.remove("/data/" + filename);
         }
     }
@@ -190,7 +189,7 @@ void tickerListUpdate(void)
             if (filename.endsWith(".csv") && filename.substring(0, filename.length() - 4) == tickerList[i].symbol)
             {
                 fileExists = true;
-                Serial.println("Found CSV file for symbol: " + tickerList[i].symbol);
+                ESP_LOGD(myTAG, "Found CSV file for symbol: %s", tickerList[i].symbol);
                 break;
             }
 
@@ -200,8 +199,7 @@ void tickerListUpdate(void)
         if (!fileExists)
         {
             // If no CSV file exists for this symbol, call getData()
-            Serial.print("No CSV found for symbol: ");
-            Serial.println(tickerList[i].symbol);
+            ESP_LOGI(myTAG, "No CSV found for symbol: %s", tickerList[i].symbol);
             String csvData = "";
             csvData = getHistoricData(tickerList[i].symbol, priceHistLen);
             if (csvData != "")
@@ -209,14 +207,14 @@ void tickerListUpdate(void)
                 File file = SD.open("/data/" + tickerList[i].symbol + ".csv", FILE_WRITE);
                 if (!file)
                 {
-                    Serial.println("Failed to open file for writing");
+                    ESP_LOGW(myTAG, "Failed to open file for writing");
                 }
                 else
                 {
                     // Write the received CSV data to the file
                     file.print(csvData);
                     file.close();
-                    Serial.println("Data saved to /data/" + tickerList[i].symbol + ".csv");
+                    ESP_LOGI(myTAG, "Data saved to /data/%s.csv", tickerList[i].symbol);
                 }
             }
             vTaskDelay(5000); // Delay to avoid sending too many requests at once
@@ -246,22 +244,21 @@ String getStartDate(int length)
              timeinfo.tm_year + 1900,
              timeinfo.tm_mon + 1,
              timeinfo.tm_mday);
-    // Serial.println("Start date: " + String(dateBuffer));
+    ESP_LOGV(myTAG, "Start date: %s", String(dateBuffer));
     return String(dateBuffer);
 }
 
 // Function to get price data from StockCharts.com and save to CSV file
 String getHistoricData(const String symbol, int length)
 {
-    // Serial.println("Getting data for " + symbol + " for " + String(length) + " days");
+    ESP_LOGV(myTAG, "Downloading data for %s, length = %d", symbol, length);
     String csvData = "";
     for (int j = 0; j < 5; j++)
     {
         if (j > 0)
         {
-            Serial.println("Attempt " + String(j + 1) + " to get todays price for " + symbol);
             ESP_LOGW(myTAG, "Attempt %d failed to get todays price for %s", j, symbol);
-            Serial.println("Waiting " + String(10 * j) + " seconds before retrying...");
+            ESP_LOGD(myTAG, "Waiting %ds before retry...", 10 * j);
         }
         vTaskDelay(10000 * j);
         WiFiClientSecure client;
@@ -269,7 +266,7 @@ String getHistoricData(const String symbol, int length)
         client.setTimeout(30);
         if (!client.connect(scURLBase, 443))
         {
-            Serial.println("Connection failed!");
+            ESP_LOGW(myTAG, "StockCharts connection failed!");
             client.stop();
             continue;
         }
@@ -333,8 +330,7 @@ String getHistoricData(const String symbol, int length)
 
         if (error)
         {
-            Serial.print("Failed to parse JSON: ");
-            Serial.println(error.c_str());
+            ESP_LOGW(myTAG, "Failed to parse JSON: %s", error.c_str());
             continue;
         }
         // Print the JSON document
@@ -347,17 +343,17 @@ String getHistoricData(const String symbol, int length)
         {
             csvData += interval["end"]["time"].as<String>().substring(0, 10) + "," + interval["close"].as<String>() + "\n";
         }
-        Serial.println("CSV Data:");
-        Serial.println(csvData);
+        // Serial.println("CSV Data:");
+        // Serial.println(csvData);
         break;
     }
     if (csvData == "")
     {
-        Serial.println("Failed to get historic data for " + symbol);
+        ESP_LOGW(myTAG, "Failed to get historic data for %s", symbol);
         faildCount++;
         if (faildCount >= 3)
         {
-            Serial.println("Too many failed attempts to get data. Rebooting...");
+            ESP_LOGE(myTAG, "Too many failed attempts to get data. Rebooting...");
             reboot();
         }
         return "";
@@ -370,13 +366,13 @@ String getHistoricData(const String symbol, int length)
 void getTodayData(int tickerNum)
 {
     xSemaphoreTake(TickListmutex, portMAX_DELAY);
-    // Serial.println("Getting todays price for " + tickerList[tickerNum].symbol);
+    ESP_LOGV(myTAG, "Getting todays price for %s", tickerList[tickerNum].symbol);
     for (int j = 0; j < 5; j++)
     {
         if (j > 0)
         {
-            Serial.println("Attempt " + String(j + 1) + " to get todays price for " + tickerList[tickerNum].symbol);
-            Serial.println("Waiting " + String(10 * j) + " seconds before retrying...");
+            ESP_LOGW(myTAG, "Attempt %d to get todays price for %s failed", j + 1, tickerList[tickerNum].symbol);
+            ESP_LOGD(myTAG, "Waiting %ds before retry...", 10 * j);
         }
         vTaskDelay(10000 * j);
         WiFiClientSecure client;
@@ -384,7 +380,7 @@ void getTodayData(int tickerNum)
         client.setTimeout(30);
         if (!client.connect(scURLBase, 443))
         {
-            Serial.println("Connection failed!");
+            ESP_LOGW(myTAG, "StockCharts connection failed!");
             client.stop();
             continue;
         }
@@ -448,8 +444,7 @@ void getTodayData(int tickerNum)
 
         if (error)
         {
-            Serial.print("Failed to parse JSON: ");
-            Serial.println(error.c_str());
+            ESP_LOGW(myTAG, "Failed to parse JSON: %s", error.c_str());
             continue;
         }
         // Print the JSON document
@@ -462,15 +457,15 @@ void getTodayData(int tickerNum)
             tickerList[tickerNum].price = todaysClose;
             tickerList[tickerNum].change = todaysClose - CloseYesterday;
             tickerList[tickerNum].changePct = (tickerList[tickerNum].change / CloseYesterday) * 100;
-            Serial.printf("Ticker: %s, Price: %.2f, Change: %.2f, ChangePct: %.2f%%\n", tickerList[tickerNum].symbol.c_str(), tickerList[tickerNum].price, tickerList[tickerNum].change, tickerList[tickerNum].changePct);
+            ESP_LOGD(myTAG, "Ticker: %s, Price: %.2f, Change: %.2f, ChangePct: %.2f%%\n", tickerList[tickerNum].symbol.c_str(), tickerList[tickerNum].price, tickerList[tickerNum].change, tickerList[tickerNum].changePct);
         }
         else
         {
-            Serial.println("Failed to get todays price for " + tickerList[tickerNum].symbol);
+            ESP_LOGW(myTAG, "Failed to get todays price for %s", tickerList[tickerNum].symbol);
             faildCount++;
             if (faildCount >= 3)
             {
-                Serial.println("Too many failed attempts to get data. Rebooting...");
+                ESP_LOGE(myTAG, "Too many failed attempts to get data. Rebooting...");
                 reboot();
             }
             continue;
@@ -515,7 +510,7 @@ void isMarketOpen(void)
             {
                 if (!isCsvFileDataUpToDate(tickerList[i].symbol))
                 {
-                    Serial.println(tickerList[i].symbol + ".csv is outdated. Updating now...");
+                    ESP_LOGI(myTAG, "%s.csv is outdated. Updating now...", tickerList[i].symbol);
                     updateCsvFile(i);
                     vTaskDelay(5000);
                 }
@@ -536,7 +531,7 @@ void isMarketOpen(void)
 // Function to update data csv files at end of day
 void updateAllCsvFiles(void)
 {
-    Serial.println("Updating all CSV data files");
+    ESP_LOGI(myTAG, "Updating all CSV data files");
     for (int i = 0; i < numTickers; i++)
     {
         updateCsvFile(i);
@@ -551,21 +546,21 @@ bool updateCsvFile(const int tickerIndex)
     xSemaphoreTake(SDmutex, portMAX_DELAY);
     xSemaphoreTake(TickListmutex, portMAX_DELAY);
     String csvData = "";
-    Serial.println("Updating " + tickerList[tickerIndex].symbol + ".csv l=" + String(priceHistLen));
+    ESP_LOGD(myTAG, "Updating %s.csv l=&d", tickerList[tickerIndex].symbol, priceHistLen);
     csvData = getHistoricData(tickerList[tickerIndex].symbol, priceHistLen);
     if (csvData != "")
     {
         File file = SD.open("/data/" + tickerList[tickerIndex].symbol + ".csv", FILE_WRITE);
         if (!file)
         {
-            Serial.println("Failed to open file for writing");
+            ESP_LOGI(myTAG, "Failed to open file for writing");
         }
         else
         {
             // Write the received CSV data to the file
             file.print(csvData);
             file.close();
-            // Serial.println("Data saved to /data/" + tickerList[tickerIndex].symbol + ".csv");
+            ESP_LOGD(myTAG, "Data saved to /data/%s.csv", tickerList[tickerIndex].symbol);
             success = true;
         }
     }
@@ -589,7 +584,7 @@ bool isCsvFileDataUpToDate(const String symbol)
         lastDate = table.readCell(rows - 1, 0);
         int month = lastDate.substring(5, 7).toInt();
         int day = lastDate.substring(8, 10).toInt();
-        Serial.printf("Last date in %s.csv: %d/%d\n", symbol, month, day);
+        ESP_LOGD(myTAG, "Last date in %s.csv: %d/%d", symbol, month, day);
         if (month == rtc.getMonth() + 1 && day == rtc.getDay())
         {
             dataUpToDate = true;

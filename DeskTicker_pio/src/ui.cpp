@@ -9,6 +9,8 @@
 #include "myUtils.h"
 #include "uiFiles/ui.h"
 
+static const char *myTAG = "ui.cpp";
+
 int32_t chartDataArray[130] = {0};
 bool screenSleep = false;
 
@@ -19,8 +21,6 @@ lv_chart_series_t *ui_Chart1_series_1;
 /***********************************************************************/
 void uiTask(void *parameters)
 {
-    Serial.println("uiTask: init");
-
     // init display and lvgl
     smartdisplay_init();
     smartdisplay_lcd_set_backlight(0.7); // set backlight in %
@@ -193,7 +193,7 @@ void updateChart(const ticker tic)
         if (addToday)
         {
             chartDataArray[len] = int(tic.price * 100);
-            Serial.println("add today: " + String(chartDataArray[len]));
+            ESP_LOGV(myTAG, "add today: %d", chartDataArray[len]);
             len++;
 
             lv_label_set_text_fmt(ui_labEndDate, "%d/%d", rtc.getMonth() + 1, rtc.getDay());
@@ -240,7 +240,7 @@ bool isDateOlderThan3Days(const String &dateString)
     // Parse the input date string (YYYY-MM-DD)
     if (sscanf(dateString.c_str(), "%d-%d-%d", &inputDate.tm_year, &inputDate.tm_mon, &inputDate.tm_mday) != 3)
     {
-        Serial.println("Error: Invalid date format. Use YYYY-MM-DD.");
+        ESP_LOGE(myTAG, "Error: Invalid date format. Use YYYY-MM-DD.");
         return false;
     }
 
@@ -252,7 +252,7 @@ bool isDateOlderThan3Days(const String &dateString)
     time_t inputTime = mktime(&inputDate);
     if (inputTime == -1)
     {
-        Serial.println("Error: Unable to convert input date to time.");
+        ESP_LOGE(myTAG, "Error: Unable to convert input date to time.");
         return false;
     }
 
@@ -350,30 +350,28 @@ void keyboardEnter(lv_event_t *e)
     {
         symbolChangeTime = atoi(lv_textarea_get_text(ui_taTickerSwitchT));
         prefs.putShort("symChT", symbolChangeTime);
-        Serial.println("target = ui_taTickerSwitchT");
-        Serial.println("symbolChangeTime = " + String(symbolChangeTime));
+        ESP_LOGI(myTAG, "UI changed symbolChangeTime to %d", symbolChangeTime);
     }
     else if (target == ui_taSleepT)
     {
         screenTimeout = atoi(lv_textarea_get_text(ui_taSleepT));
         prefs.putShort("slpT", screenTimeout);
-        Serial.println("target = ui_taSleepT");
-        Serial.println("screenTimeout = " + String(screenTimeout));
+        ESP_LOGI(myTAG, "UI changed screenTimeout to %d", screenTimeout);
     }
     else if (target == ui_taWifiSsid)
     {
         prefs.putString("SSID", lv_textarea_get_text(ui_taWifiSsid));
-        Serial.println("target = ui_taWifiSsid");
+        ESP_LOGI(myTAG, "UI changed SSID");
     }
     else if (target == ui_taWifiPass)
     {
         prefs.putString("PASS", lv_textarea_get_text(ui_taWifiPass));
         lv_textarea_set_text(ui_taWifiPass, "");
-        Serial.println("target == ui_taWifipass");
+        ESP_LOGI(myTAG, "UI changed WIFI password");
     }
     else
     {
-        Serial.println("No target found");
+        ESP_LOGD(myTAG, "No target found");
     }
     prefs.end();
     xSemaphoreGive(prefsmutex);

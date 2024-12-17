@@ -186,6 +186,7 @@
     <div class="buttons-container">
         <button id="sys-info-btn" class="sys-btn">System Info</button>
         <button id="files-btn" class="sys-btn">List Files</button>
+        <button id="log-btn" class="sys-btn">Log</button>
     </div>
 
     <script>
@@ -194,14 +195,18 @@
 
         const chartLengthInput = document.getElementById('chart-length');
         const chartLengthSubmit = document.getElementById('chart-length-submit');
+
         const submitBtn = document.getElementById('submit-btn');
         const addRowBtn = document.getElementById('add-row-btn');
         const refreshBtn = document.getElementById('refresh-btn');
         const dataTableBody = document.querySelector('#data-table tbody');
+
         const infoBtn = document.getElementById('sys-info-btn');
         const infoUrl = `${window.location.origin}/api/sysinfo`;
         const filesBtn = document.getElementById('files-btn');
         const filesUrl = `${window.location.origin}/api/list`;
+        const logBtn = document.getElementById('log-btn');
+        const logUrl = `${window.location.origin}/api/log`;
 
         // Initialize chart length input field
         async function initializeChartLength() {
@@ -462,6 +467,9 @@
         });
         filesBtn.addEventListener('click', () => {
             window.location.href = filesUrl;
+        });
+        logBtn.addEventListener('click', () => {
+            window.location.href = logUrl;
         });
 
         // Initialize the page by fetching data

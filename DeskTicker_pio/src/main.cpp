@@ -11,6 +11,8 @@
 
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"
 
+#define PRINT_HIGHWATER false
+
 SET_LOOP_TASK_STACK_SIZE(3072);
 
 void setup()
@@ -38,7 +40,7 @@ void setup()
   // init SD card
   if (!SD.begin(5))
   {
-    Serial.println("Card Mount Failed");
+    ESP_LOGE("main.cpp", "Card Mount Failed");
     return;
   }
   printSdUssage();
@@ -47,8 +49,11 @@ void setup()
   logFilesInit();
 
   // set log levels and callback
-  esp_log_level_set("*", ESP_LOG_WARN);
-  esp_log_level_set("myApp", ESP_LOG_INFO);
+  esp_log_level_set("*", ESP_LOG_INFO);
+  esp_log_level_set("data.cpp", ESP_LOG_VERBOSE);
+  esp_log_level_set("web.cpp", ESP_LOG_VERBOSE);
+  esp_log_level_set("ui.cpp", ESP_LOG_VERBOSE);
+  esp_log_level_set("myUtils.cpp", ESP_LOG_VERBOSE);
   esp_log_set_vprintf(handleNewLogMessage);
 
   // get ui settings for NVS
@@ -68,28 +73,38 @@ void setup()
 
 void loop()
 {
-  vTaskDelay(120000);
+  vTaskDelay(5 * 60 * 1000); // run every 5 mins
 
-  Serial.print("\n-------- High Water Marks --------\n");
-  Serial.println("(minimum free stack space)");
-  Serial.print("uiTask : ");
-  Serial.println(uxTaskGetStackHighWaterMark(uiTaskHandle));
-  Serial.print("dataTask : ");
-  Serial.println(uxTaskGetStackHighWaterMark(dataTaskHandle));
-  Serial.print("webTask : ");
-  Serial.println(uxTaskGetStackHighWaterMark(webTaskHandle));
-  Serial.print("loop: ");
-  Serial.println(uxTaskGetStackHighWaterMark(NULL));
-  Serial.println("----------------------------------");
-  Serial.print("free heap space: ");
-  Serial.println(ESP.getFreeHeap());
-  Serial.print("minimum free heap space: ");
-  Serial.println(ESP.getMinFreeHeap());
-  Serial.println("----------------------------------");
-  Serial.printf("Market Open: %d\n", marketOpen);
-  Serial.println("----------------------------------\n");
-  Serial.flush();
+  if (PRINT_HIGHWATER)
+  {
+    Serial.print("\n-------- High Water Marks --------\n");
+    Serial.println("(minimum free stack space)");
+    Serial.print("uiTask : ");
+    Serial.println(uxTaskGetStackHighWaterMark(uiTaskHandle));
+    Serial.print("dataTask : ");
+    Serial.println(uxTaskGetStackHighWaterMark(dataTaskHandle));
+    Serial.print("webTask : ");
+    Serial.println(uxTaskGetStackHighWaterMark(webTaskHandle));
+    Serial.print("loop: ");
+    Serial.println(uxTaskGetStackHighWaterMark(NULL));
+    Serial.println("----------------------------------");
+    Serial.print("free heap space: ");
+    Serial.println(ESP.getFreeHeap());
+    Serial.print("minimum free heap space: ");
+    Serial.println(ESP.getMinFreeHeap());
+    Serial.println("----------------------------------");
+    Serial.printf("Market Open: %d\n", marketOpen);
+    Serial.println("----------------------------------\n");
+    Serial.flush();
+  }
 
+  // if there is log messages in buffer save to sd card
+  if (strlen(logBuf) > 128)
+  {
+    saveLogToSD();
+  }
+
+  // check wifi is still connected
   if (WiFi.status() != WL_CONNECTED)
   {
     wificon();

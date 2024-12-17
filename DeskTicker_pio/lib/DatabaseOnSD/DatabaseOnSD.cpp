@@ -142,6 +142,7 @@ String MyTable::selectRow(int rowN)
     }
   }
   table.close();
+  return "";
 }
 
 //------------------------nthCharIndexTable-----------verfified----------------------
@@ -605,6 +606,7 @@ String updateString(int index, String data, String string_)
       }
     }
   }
+  return string;
 }
 
 long parseNumber(String string)
