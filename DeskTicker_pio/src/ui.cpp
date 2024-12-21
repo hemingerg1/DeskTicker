@@ -6,12 +6,12 @@
 #include <DatabaseOnSD.h>
 #include <WiFi.h>
 
-#include "myUtils.h"
+#include "myUtils.hpp"
 #include "uiFiles/ui.h"
 
 static const char *myTAG = "ui.cpp";
 
-int32_t chartDataArray[130] = {0};
+int chartDataArray[130] = {0};
 bool screenSleep = false;
 
 lv_chart_series_t *ui_Chart1_series_1;
@@ -102,7 +102,7 @@ void uiTask(void *parameters)
 /*************************  Helper Functions  **************************/
 /***********************************************************************/
 // function to update the main screen
-void updateHomeScreen(ticker tic)
+void updateHomeScreen(const ticker &tic)
 {
     if (tic.symbol != "")
     {
@@ -134,10 +134,10 @@ void updateHomeScreen(ticker tic)
 }
 
 // function to update the chart
-void updateChart(const ticker tic)
+void updateChart(const ticker &tic)
 {
     // get data from SD card
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
+    xSemaphoreTake(SDmutex, 5000);
     MyTable table("/data/" + tic.symbol + ".csv");
     bool addToday = false;
     int len = 0;
@@ -154,7 +154,7 @@ void updateChart(const ticker tic)
                 int day = lastDate.substring(8, 10).toInt();
 
                 // if today is in csv file substitute price for ticker current price
-                if (month == rtc.getMonth() + 1 && day == rtc.getDay())
+                if (month == rtc.getMonth() + 1 && day == rtc.getDay() && tic.price != 0)
                 {
                     chartDataArray[i - 1] = int(tic.price * 100);
                 }
@@ -190,7 +190,7 @@ void updateChart(const ticker tic)
         }
 
         // if market is open and csv filed didn't contain today's date, add today's price to the end of the array
-        if (addToday)
+        if (addToday && tic.price != 0)
         {
             chartDataArray[len] = int(tic.price * 100);
             ESP_LOGV(myTAG, "add today: %d", chartDataArray[len]);
@@ -210,8 +210,8 @@ void updateChart(const ticker tic)
         lv_chart_set_point_count(ui_Chart1, len);
 
         // adjust Y axis range
-        int *loc_min = std::min_element(chartDataArray, chartDataArray + len - 1);
-        int *loc_max = std::max_element(chartDataArray, chartDataArray + len - 1);
+        int *loc_min = std::min_element(chartDataArray, chartDataArray + len);
+        int *loc_max = std::max_element(chartDataArray, chartDataArray + len);
         int data_min = *loc_min; // data is already * 100
         int data_max = *loc_max; // data is already * 100
         // int mean = (data_min + data_max) / 2;
@@ -240,7 +240,7 @@ bool isDateOlderThan3Days(const String &dateString)
     // Parse the input date string (YYYY-MM-DD)
     if (sscanf(dateString.c_str(), "%d-%d-%d", &inputDate.tm_year, &inputDate.tm_mon, &inputDate.tm_mday) != 3)
     {
-        ESP_LOGE(myTAG, "Error: Invalid date format. Use YYYY-MM-DD.");
+        ESP_LOGE(myTAG, "Error: Invalid date format in CSV file. Use YYYY-MM-DD.");
         return false;
     }
 
@@ -321,7 +321,7 @@ void displaySleep()
 
     if (!screenSleep && inactMin >= adjustTimeout)
     {
-        smartdisplay_lcd_set_backlight(0.05);
+        smartdisplay_lcd_set_backlight(0.03);
         lv_scr_load(ui_ScrSleep);
         screenSleep = true;
     }

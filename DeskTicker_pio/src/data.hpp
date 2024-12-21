@@ -1,7 +1,7 @@
 #ifndef DATA_HPP
 #define DATA_HPP
 
-#include "myUtils.h"
+#include "myUtils.hpp"
 
 extern ushort updateInterval; // in minutes
 extern bool eodUpdate;
@@ -15,13 +15,14 @@ void dataTask(void *parameters);
 /*************************  Helper Functions  **************************/
 /***********************************************************************/
 void loadTickers(void);
-void tickerListUpdate(void);
-String getStartDate(int length);
-String getHistoricData(const String symbol, int length);
-void getTodayData(int tickerNum);
+void dataDirUpdate(void);
+String getStartDate(const int length);
+String getHistoricData(const int tickerNum, const int length);
+void getTodayData(const int tickerNum);
 void isMarketOpen(void);
 void updateAllCsvFiles(void);
 bool updateCsvFile(const int tickerIndex);
-bool isCsvFileDataUpToDate(const String symbol);
+bool isCsvFileDataUpToDate(const String &symbol);
+void checkRetryFlags(void);
 
 #endif

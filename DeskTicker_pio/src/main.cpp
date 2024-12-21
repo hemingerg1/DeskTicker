@@ -4,7 +4,7 @@
 #include <SD.h>
 #include <ESP32Time.h>
 
-#include "myUtils.h"
+#include "myUtils.hpp"
 #include "ui.hpp"
 #include "data.hpp"
 #include "web.hpp"
@@ -13,7 +13,7 @@
 
 #define PRINT_HIGHWATER false
 
-SET_LOOP_TASK_STACK_SIZE(3072);
+SET_LOOP_TASK_STACK_SIZE(3200);
 
 void setup()
 {
@@ -36,28 +36,44 @@ void setup()
   {
     xSemaphoreGive(TickListmutex);
   }
+  logmutex = xSemaphoreCreateMutex();
+  if (logmutex != NULL)
+  {
+    xSemaphoreGive(logmutex);
+  }
+
+  // set log levels and callback
+  esp_log_level_set("*", ESP_LOG_INFO);
+  /*
+  esp_log_level_set("main.cpp", ESP_LOG_DEBUG);
+  esp_log_level_set("data.cpp", ESP_LOG_DEBUG);
+  esp_log_level_set("web.cpp", ESP_LOG_DEBUG);
+  esp_log_level_set("ui.cpp", ESP_LOG_DEBUG);
+  esp_log_level_set("myUtils.cpp", ESP_LOG_DEBUG);
+  */
+  esp_log_set_vprintf(handleNewLogMessage);
 
   // init SD card
   if (!SD.begin(5))
   {
     ESP_LOGE("main.cpp", "Card Mount Failed");
-    return;
+    reboot();
   }
+
+  // get the latest log file from SD card
+  logFilesInit();
+  ESP_LOGI("main.cpp", "***** Booting ***** Current log file %d.txt", logFileNum);
+
   printSdUssage();
 
-  // get the latest log file
-  logFilesInit();
-
-  // set log levels and callback
-  esp_log_level_set("*", ESP_LOG_INFO);
-  esp_log_level_set("data.cpp", ESP_LOG_VERBOSE);
-  esp_log_level_set("web.cpp", ESP_LOG_VERBOSE);
-  esp_log_level_set("ui.cpp", ESP_LOG_VERBOSE);
-  esp_log_level_set("myUtils.cpp", ESP_LOG_VERBOSE);
-  esp_log_set_vprintf(handleNewLogMessage);
-
+  // create a timer to give settingsInit() a time limit to complete.
+  // if not completed in time, reboot
+  // when SD file system fails to mount, code can hang in prefs.begin()
+  timeoutTimer = xTimerCreate("Timeout Timer", 6000, pdFALSE, NULL, timeoutReboot);
+  xTimerStart(timeoutTimer, 0);
   // get ui settings for NVS
-  settingsInit();
+  xTaskCreatePinnedToCore(settingsInitTask, "settingsTask", 2000, NULL, 1, NULL, 1);
+  vTaskDelay(1000);
 
   // start ui task
   xTaskCreatePinnedToCore(uiTask, "uiTask", 7168, NULL, 1, &uiTaskHandle, 1);
@@ -96,6 +112,12 @@ void loop()
     Serial.printf("Market Open: %d\n", marketOpen);
     Serial.println("----------------------------------\n");
     Serial.flush();
+  }
+
+  // check if it is time to create new log file
+  if (needNewLogFile)
+  {
+    createNewLogFile();
   }
 
   // if there is log messages in buffer save to sd card

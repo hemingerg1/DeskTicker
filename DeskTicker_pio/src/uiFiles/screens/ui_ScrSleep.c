@@ -17,7 +17,7 @@ void ui_ScrSleep_screen_init(void)
     lv_obj_set_height(ui_labTimeSleep, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_labTimeSleep, LV_ALIGN_CENTER);
     lv_label_set_text(ui_labTimeSleep, "00:00");
-    lv_obj_set_style_text_color(ui_labTimeSleep, lv_color_hex(0xFF8D26), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui_labTimeSleep, lv_color_hex(0xFF1400), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_labTimeSleep, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_labTimeSleep, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
 

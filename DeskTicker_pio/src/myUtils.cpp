@@ -1,5 +1,5 @@
 
-#include "myUtils.h"
+#include "myUtils.hpp"
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -19,6 +19,8 @@ TaskHandle_t uiTaskHandle = NULL;
 TaskHandle_t dataTaskHandle = NULL;
 TaskHandle_t webTaskHandle = NULL;
 
+TimerHandle_t timeoutTimer;
+
 SemaphoreHandle_t prefsmutex = NULL;
 ESP32Time rtc(0);
 Preferences prefs;
@@ -27,9 +29,25 @@ short int symbolChangeTime = 10; // in seconds
 short int priceHistLen = 60;     // in days
 bool noWifiInit = true;
 
+// wrapper function to call settingsInit() from a task
+void settingsInitTask(void *parameters)
+{
+    settingsInit();
+
+    // stop the timeout if task completed
+    if (timeoutTimer != NULL)
+    {
+        xTimerStop(timeoutTimer, 0);
+    }
+
+    vTaskDelete(NULL);
+}
+
 // function to get settings from NVS storage
 void settingsInit()
 {
+    ESP_LOGD(myTAG, "Getting settings from NVS storage...");
+
     xSemaphoreTake(prefsmutex, portMAX_DELAY);
     if (prefs.begin("settings", false))
     {
@@ -37,6 +55,7 @@ void settingsInit()
         screenTimeout = prefs.getShort("slpT", 5);
         priceHistLen = prefs.getShort("histLen", 60);
         prefs.end();
+        ESP_LOGI(myTAG, "Got settings from NVS storage.");
     }
     else
     {
@@ -130,8 +149,15 @@ void timeSync(const char *tzInfo, const char *ntpServer1, const char *ntpServer2
 void reboot(void)
 {
     ESP_LOGW(myTAG, "Rebooting...");
-    delay(2000);
+    saveLogToSD();
+    vTaskDelay(2000);
     ESP.restart();
+}
+
+void timeoutReboot(TimerHandle_t xTimer)
+{
+    ESP_LOGE(myTAG, "Settings init timer expired. Rebooting...");
+    reboot();
 }
 
 /***********************************************************************/
@@ -139,98 +165,100 @@ void reboot(void)
 /***********************************************************************/
 SemaphoreHandle_t SDmutex = NULL;
 
-const char *htmlFilePath = "/index.html";
+const char *htmlFilePath = "/index.htm";
 const char *tickerListFilePath = "/tickerList.csv";
 
 // Function to return a list of all files in the SD card
 String listDir(fs::FS &fs, const char *dirname)
 {
-    ESP_LOGD(myTAG, "Listing directory: %s\n", dirname);
+    ESP_LOGD(myTAG, "Listing directory: %s", dirname);
     String result;
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
-    File root = fs.open(dirname, "r");
-    if (!root)
+    if (xSemaphoreTake(SDmutex, 5000) == pdTRUE)
     {
-        result = "Failed to open directory";
-        xSemaphoreGive(SDmutex);
-        return result;
-    }
-    if (!root.isDirectory())
-    {
-        result = "Not a directory";
-        xSemaphoreGive(SDmutex);
-        return result;
-    }
-
-    result += "[\n";
-    while (File entry = root.openNextFile())
-    {
-        if (String(entry.name()) == "System Volume Information")
+        File root = fs.open(dirname, "r");
+        if (!root)
         {
-            continue;
+            result = "Failed to open directory";
+            xSemaphoreGive(SDmutex);
+            return result;
         }
-        if (entry.isDirectory())
+        if (!root.isDirectory())
         {
-            char buffer[24];
-            time_t t = entry.getLastWrite();
-            struct tm *writeTime = localtime(&t);
-            strftime(buffer, 24, "%F %T", writeTime);
+            result = "Not a directory";
+            xSemaphoreGive(SDmutex);
+            return result;
+        }
 
-            result += " {";
-            result += "\"type\": \"dir\", ";
-            result += "\"name\": \"" + String(entry.name()) + "\", ";
-            result += "\"last write\": " + String(buffer);
-            result += "}\n";
-            while (File entry2 = entry.openNextFile())
+        result += "[\n";
+        while (File entry = root.openNextFile())
+        {
+            if (String(entry.name()) == "System Volume Information")
             {
-                char buffer2[24];
-                time_t t2 = entry2.getLastWrite();
-                struct tm *writeTime2 = localtime(&t2);
-                strftime(buffer2, 24, "%F %T", writeTime2);
-
-                result += "    {";
-                result += "\"type\": \"file\", ";
-                result += "\"name\": \"" + String(entry2.name()) + "\", ";
-                result += "\"size\": " + String(entry2.size()) + ", ";
-                result += "\"last write\": " + String(buffer2);
-                result += "}\n";
-                entry2.close();
+                continue;
             }
-            entry.close();
-        }
-        else
-        {
-            char buffer[24];
-            time_t t = entry.getLastWrite();
-            struct tm *writeTime = localtime(&t);
-            strftime(buffer, 24, "%F %T", writeTime);
+            if (entry.isDirectory())
+            {
+                char buffer[24];
+                time_t t = entry.getLastWrite();
+                struct tm *writeTime = localtime(&t);
+                strftime(buffer, 24, "%F %T", writeTime);
 
-            result += " {";
-            result += "\"type\": \"file\", ";
-            result += "\"name\": \"" + String(entry.name()) + "\", ";
-            result += "\"size\": " + String(entry.size()) + ", ";
-            result += "\"last write\": " + String(buffer);
-            result += "}\n";
-            entry.close();
+                result += " {";
+                result += "\"type\": \"dir\", ";
+                result += "\"name\": \"" + String(entry.name()) + "\", ";
+                result += "\"last write\": " + String(buffer);
+                result += "}\n";
+                while (File entry2 = entry.openNextFile())
+                {
+                    char buffer2[24];
+                    time_t t2 = entry2.getLastWrite();
+                    struct tm *writeTime2 = localtime(&t2);
+                    strftime(buffer2, 24, "%F %T", writeTime2);
+
+                    result += "    {";
+                    result += "\"type\": \"file\", ";
+                    result += "\"name\": \"" + String(entry2.name()) + "\", ";
+                    result += "\"size\": " + String(entry2.size()) + ", ";
+                    result += "\"last write\": " + String(buffer2);
+                    result += "}\n";
+                    entry2.close();
+                }
+                entry.close();
+            }
+            else
+            {
+                char buffer[24];
+                time_t t = entry.getLastWrite();
+                struct tm *writeTime = localtime(&t);
+                strftime(buffer, 24, "%F %T", writeTime);
+
+                result += " {";
+                result += "\"type\": \"file\", ";
+                result += "\"name\": \"" + String(entry.name()) + "\", ";
+                result += "\"size\": " + String(entry.size()) + ", ";
+                result += "\"last write\": " + String(buffer);
+                result += "}\n";
+                entry.close();
+            }
         }
+        result += "]";
+        root.close();
+        xSemaphoreGive(SDmutex);
     }
-    result += "]";
-    root.close();
-    xSemaphoreGive(SDmutex);
+    else
+    {
+        result = "SD card busy trying again later.";
+    }
     return result;
 }
 
 // print the SD card usage
 void printSdUssage(void)
 {
-    ESP_LOGD(myTAG, "-------- SD Card usage --------");
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
     float totalMBytes = SD.totalBytes() / (1024 * 1024);
     float usedKBytes = SD.usedBytes() / (1024);
-    ESP_LOGD(myTAG, "SD Card Total Size (MB): %.2f\n", totalMBytes);
-    ESP_LOGD(myTAG, "SD Card Used Space (kB): %.2f\n", usedKBytes);
-    xSemaphoreGive(SDmutex);
-    ESP_LOGD(myTAG, "--------------------------------");
+    ESP_LOGD(myTAG, "SD Card Total Size (MB): %.2f", totalMBytes);
+    ESP_LOGD(myTAG, "SD Card Used Space (kB): %.2f", usedKBytes);
 }
 
 /***********************************************************************/
@@ -248,20 +276,21 @@ ticker tickerList[maxTickers];
 /***********************************************************************/
 /*****************************  Logging Utils  *************************/
 /***********************************************************************/
+SemaphoreHandle_t logmutex;
 ushort logFileNum = 0;
+bool needNewLogFile = false;
 const char *logFileDir = "/logs";
+char logTempBuf[256] = "";
 const size_t logBuf_size = 1024;
 char logBuf[logBuf_size];
 
 // fucntion to init log file number at start up
 void logFilesInit()
 {
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
-
     // check if logs directory exists and create it if not
     if (!SD.exists(logFileDir))
     {
-        ESP_LOGI(myTAG, "Log files directory does not exist. Creating it now.");
+        Serial.println("Log files directory does not exist. Creating it now.");
         SD.mkdir(logFileDir);
     }
 
@@ -280,36 +309,40 @@ void logFilesInit()
     }
     dir.rewindDirectory();
     dir.close();
-
-    ESP_LOGD(myTAG, "Current log file %d.txt", logFileNum);
-
-    deleteOldLogFiles();
-
-    xSemaphoreGive(SDmutex);
 }
 
 // function to add log message to buffer
 int handleNewLogMessage(const char *format, va_list args)
 {
-    ESP_LOGV(myTAG, "Log message callback running");
-
     // format message in a temp buffer
-    char tempBuf[128] = "";
-    int ret = vsnprintf(tempBuf, sizeof(tempBuf), format, args);
+    int ret = vsnprintf(logTempBuf, sizeof(logTempBuf), format, args);
+    Serial.print(logTempBuf);
 
-    // Check the length of the current buffer and the formatted message
-    size_t currentLength = strlen(logBuf);
-    size_t messageLength = strlen(tempBuf);
-
-    // Check if the message will fit in the remaining buffer space
-    if (currentLength + messageLength + 1 >= logBuf_size)
+    if (xSemaphoreTake(logmutex, 5000) == pdTRUE)
     {
-        ESP_LOGV(myTAG, "Log message will not fit in buffer. Saving buffer to file.");
-        saveLogToSD();
-        currentLength = strlen(logBuf);
+        // Check the length of the current buffer and the formatted message
+        size_t currentLength = strlen(logBuf);
+        size_t messageLength = strlen(logTempBuf);
+
+        // Check if the message will fit in the remaining buffer space
+        if (currentLength + messageLength + 1 >= logBuf_size)
+        {
+            Serial.println("Saving log buffer to file.");
+            saveLogToSD();
+            currentLength = strlen(logBuf);
+        }
+        // Append the formatted message to the buffer
+        strncat(logBuf, logTempBuf, logBuf_size - currentLength - 1);
+
+        xSemaphoreGive(logmutex);
+    }
+    else
+    {
+        Serial.println("Failed to take log mutex. Above message not saved");
     }
 
-    strncat(logBuf, tempBuf, logBuf_size - currentLength - 1);
+    // reset the temp buffer
+    logTempBuf[0] = '\0';
 
     return ret;
 }
@@ -317,36 +350,39 @@ int handleNewLogMessage(const char *format, va_list args)
 // function to save log buffer to sd card then empty buffer
 void saveLogToSD()
 {
-    ESP_LOGV(myTAG, "Saving log buffer to SD card");
-
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
-
     // Write buffer to file
     File file = SD.open(String(logFileDir) + "/" + String(logFileNum) + ".txt", FILE_APPEND);
+    if (!file)
+    {
+        Serial.println("Failed to open log file for writing");
+        return;
+    }
     file.print(logBuf);
+    file.printf("Buffer Saved: %s\n", rtc.getTime("%D %T").c_str());
 
-    // If log file is too large create a new file
+    // If log file is too large set flag to create a new file
     if (file.size() > 100000)
     {
-        logFileNum++;
-        File newFile = SD.open(String(logFileDir) + "/" + String(logFileNum) + ".txt", FILE_WRITE);
-        newFile.close();
-        deleteOldLogFiles();
+        needNewLogFile = true;
     }
 
     file.close();
 
     // reset the buffer
     logBuf[0] = '\0';
-
-    xSemaphoreGive(SDmutex);
 }
 
-// function to delete old log files
-void deleteOldLogFiles()
+// function to create a new log file
+void createNewLogFile()
 {
-    ESP_LOGV(myTAG, "Checking for old log files to delete");
+    logFileNum++;
 
+    // create new log file
+    File newFile = SD.open(String(logFileDir) + "/" + String(logFileNum) + ".txt", FILE_WRITE);
+    newFile.printf("File Created: %s\n", rtc.getTime("%D %T").c_str());
+    newFile.close();
+
+    // delete old log files
     File dir = SD.open(logFileDir);
     while (File file = dir.openNextFile())
     {
@@ -366,4 +402,6 @@ void deleteOldLogFiles()
     }
     dir.rewindDirectory();
     dir.close();
+
+    needNewLogFile = false;
 }

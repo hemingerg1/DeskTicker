@@ -19,6 +19,8 @@ extern TaskHandle_t uiTaskHandle;
 extern TaskHandle_t dataTaskHandle;
 extern TaskHandle_t webTaskHandle;
 
+extern TimerHandle_t timeoutTimer;
+
 extern SemaphoreHandle_t prefsmutex;
 extern ESP32Time rtc;
 extern Preferences prefs;
@@ -27,10 +29,12 @@ extern short int symbolChangeTime; // in seconds
 extern short int priceHistLen;     // in days
 extern bool noWifiInit;
 
+void settingsInitTask(void *parameters);
 void settingsInit();
 void wificon(void);
 void timeSync(const char *tzInfo, const char *ntpServer1, const char *ntpServer2);
 void reboot(void);
+void timeoutReboot(TimerHandle_t xTimer);
 
 /***********************************************************************/
 /*****************************  SD card Utils  *************************/
@@ -62,6 +66,8 @@ struct ticker
     float price;
     float change;
     float changePct;
+    bool curPricRetry;
+    bool csvRetry;
 
     String describeTicker()
     {
@@ -74,11 +80,13 @@ struct ticker
 /***********************************************************************/
 /*****************************  Logging Utils  *************************/
 /***********************************************************************/
+extern SemaphoreHandle_t logmutex;
 extern ushort logFileNum;
+extern bool needNewLogFile;
 extern const char *logFileDir;
 extern char logBuf[];
 
 void logFilesInit();
 int handleNewLogMessage(const char *format, va_list args);
 void saveLogToSD();
-void deleteOldLogFiles();
+void createNewLogFile();

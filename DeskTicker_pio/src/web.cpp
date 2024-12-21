@@ -6,7 +6,7 @@
 #include <FS.h>
 #include <SD.h>
 
-#include "myUtils.h"
+#include "myUtils.hpp"
 
 AsyncWebServer server(80);
 
@@ -32,8 +32,8 @@ void webTask(void *parameters)
 {
     // Serial.println("Starting webserver task.....");
 
-    server.on("/", HTTP_GET, handleRoot);                        // Serve the HTML file
-    server.on("/api/tickerlist", HTTP_GET, handleApiGet);        // Get the ticker list file
+    server.on("/", HTTP_GET, handleRoot);                        // Serve the index.htm file
+    server.on("/api/tickerlist", HTTP_GET, handleApiGet);        // Serve the ticker list file
     server.on("/api/histlength", HTTP_GET, handleHistLengthGet); // Get the price history length
 
     server.onRequestBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
@@ -56,7 +56,7 @@ void webTask(void *parameters)
 
     server.begin();
 
-    ESP_LOGI(myTAG, "**** Webserver started at <http://%s> or <http://%s> ****\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+    ESP_LOGI(myTAG, "**** Webserver started at <http://%s> or <http://%s> ****", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
     while (1)
     {
@@ -71,32 +71,25 @@ void webTask(void *parameters)
 // Function to serve the HTML file from SD card
 void handleRoot(AsyncWebServerRequest *request)
 {
-
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
     if (!SD.exists(htmlFilePath))
     {
         request->send(500, "text/plain", "Failed to read HTML file from SD card.");
-        xSemaphoreGive(SDmutex);
         return;
     }
     ESP_LOGD(myTAG, "Webserver: Sending index.html");
     request->send(SD, htmlFilePath, "text/html");
-    xSemaphoreGive(SDmutex);
 }
 
 // Function to get the ticker list (GET /api/tickerlist)
 void handleApiGet(AsyncWebServerRequest *request)
 {
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
     if (!SD.exists(tickerListFilePath))
     {
         request->send(500, "text/plain", "Failed to open ticker list CSV file.");
-        xSemaphoreGive(SDmutex);
         return;
     }
     ESP_LOGD(myTAG, "Webserver: Sending tickerList.csv");
     request->send(SD, tickerListFilePath, "text/csv");
-    xSemaphoreGive(SDmutex);
 }
 
 // Function to handle POST requests (POST /api/tickerlist)
@@ -122,7 +115,7 @@ void handleTicListPost(AsyncWebServerRequest *request, uint8_t *data, size_t len
         ESP_LOGD(myTAG, "Webserver: Received CSV data");
         ESP_LOGD(myTAG, "%s", csvData);
         // Create or open the CSV file for writing
-        xSemaphoreTake(SDmutex, portMAX_DELAY);
+        xSemaphoreTake(SDmutex, 1000);
         File file = SD.open(tickerListFilePath, FILE_WRITE);
         if (!file)
         {
@@ -161,16 +154,17 @@ void handleSysInfo(AsyncWebServerRequest *request)
     result += "  \"Chip Model\": " + String(ESP.getChipModel()) + ",\n";
     result += "  \"Chip Cores\": " + String(ESP.getChipCores()) + ",\n";
     result += "  \"Chip Revision\": " + String(ESP.getChipRevision()) + ",\n";
-    result += "  \"flashSize\": " + String(ESP.getFlashChipSize()) + ",\n";
+    result += "  \"flashSize\": " + String(ESP.getFlashChipSize()) + ",\n\n";
+
     result += "  \"uiTask HighWater\": " + String(uxTaskGetStackHighWaterMark(uiTaskHandle)) + ",\n";
     result += "  \"dataTask HighWater\": " + String(uxTaskGetStackHighWaterMark(dataTaskHandle)) + ",\n";
-    result += "  \"webTask HighWater\": " + String(uxTaskGetStackHighWaterMark(webTaskHandle)) + ",\n";
+    result += "  \"webTask HighWater\": " + String(uxTaskGetStackHighWaterMark(webTaskHandle)) + ",\n\n";
+
     result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
-    result += "  \"minimumFreeHeap\": " + String(ESP.getMinFreeHeap()) + ",\n";
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
+    result += "  \"minimumFreeHeap\": " + String(ESP.getMinFreeHeap()) + ",\n\n";
+
     result += "  \"sdTotalKBytes\": " + String(SD.totalBytes() / 1024) + ",\n";
     result += "  \"sdUsedKBytes\": " + String(SD.usedBytes() / 1024) + ",\n";
-    xSemaphoreGive(SDmutex);
     result += "}";
 
     AsyncWebServerResponse *response = request->beginResponse(200, "text/javascript; charset=utf-8", result);
@@ -188,7 +182,7 @@ void handleHistLengthGet(AsyncWebServerRequest *request)
 // Function to handle POST requests history length (POST /api/histlength)
 void handleHistLengthPost(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
 {
-    ESP_LOGD(myTAG, "Webserver: Received POST request for /api/histlength");
+    ESP_LOGV(myTAG, "Webserver: Received POST request for /api/histlength");
 
     if (request->method() != HTTP_POST)
     {
@@ -234,14 +228,11 @@ void handleHistLengthPost(AsyncWebServerRequest *request, uint8_t *data, size_t 
 void handleLog(AsyncWebServerRequest *request)
 {
     String filePath = String(logFileDir) + "/" + String(logFileNum) + ".txt";
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
     if (!SD.exists(filePath))
     {
         request->send(500, "text/plain", "Failed to read LOG file from SD card.");
-        xSemaphoreGive(SDmutex);
         return;
     }
     ESP_LOGD(myTAG, "Webserver: Sending log file");
     request->send(SD, filePath, "text/plain");
-    xSemaphoreGive(SDmutex);
 }

@@ -1,6 +1,6 @@
 #include "data.hpp"
 
-#include "myUtils.h"
+#include "myUtils.hpp"
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -15,19 +15,22 @@
 #include "esp32-hal-log.h"
 
 #define PRINT_HEADERS false
+#define SC_Request_Delay 2000
+#define FAIL_COUNT_LIMIT 5
 
 static const char *myTAG = "data.cpp";
 
+static const String DATA_DIRECTORY = "/data";
 MyTable listTable(tickerListFilePath);
 
 ushort updateInterval = 5; // in minutes
 bool eodUpdate = false;
 bool gotEOD = false;
 bool gotNightlyCheck = false;
-ushort faildCount = 0;
+ushort failCount = 0;
 
 const char *scURLBase = "stockcharts.com";
-const char *scHistURLPath = "/quotebrain/historyandquote/d";
+const char *scHistURLPath = "/quotebrain/history/d"; // d = daily, 5 = 5min
 const char *scTodayURLPath = "/quotebrain/quote";
 const char *userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0";
 
@@ -52,10 +55,10 @@ void dataTask(void *parameters)
         {
             ESP_LOGD(myTAG, "%s.csv is outdated. Updating now...", tickerList[i].symbol);
             updateCsvFile(i);
-            vTaskDelay(5000);
+            vTaskDelay(SC_Request_Delay);
         }
         getTodayData(i);
-        vTaskDelay(5000);
+        vTaskDelay(SC_Request_Delay);
     }
     lastUpdate = millis();
 
@@ -68,11 +71,11 @@ void dataTask(void *parameters)
         if (updateTickerList)
         {
             ESP_LOGD(myTAG, "Updating ticker list and data");
-            tickerListUpdate();
+            dataDirUpdate();
             for (int i = 0; i < numTickers; i++)
             {
                 getTodayData(i);
-                vTaskDelay(5000);
+                vTaskDelay(SC_Request_Delay);
             }
             updateTickerList = false;
         }
@@ -92,7 +95,7 @@ void dataTask(void *parameters)
                 for (int i = 0; i < numTickers; i++)
                 {
                     getTodayData(i);
-                    vTaskDelay(5000);
+                    vTaskDelay(SC_Request_Delay);
                 }
                 lastUpdate = millis();
             }
@@ -105,6 +108,9 @@ void dataTask(void *parameters)
             gotEOD = true;
         }
 
+        // check if any data downloads needs to be retried
+        checkRetryFlags();
+
         vTaskDelay(5000);
     }
 }
@@ -116,11 +122,11 @@ void dataTask(void *parameters)
 // function to load tickerList from SD card csv file
 void loadTickers(void)
 {
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
+    xSemaphoreTake(SDmutex, 10000);
     if (listTable.countCols() == tickerListColNum)
     {
         numTickers = listTable.countRows() - 1;
-        ESP_LOGV(myTAG, "Number of Tickers: %d\n", numTickers);
+        ESP_LOGV(myTAG, "Number of Tickers: %d", numTickers);
         xSemaphoreTake(TickListmutex, portMAX_DELAY);
         ESP_LOGV(myTAG, "Ticker List:");
         for (int row = 0; row < numTickers; row++)
@@ -128,7 +134,7 @@ void loadTickers(void)
             tickerList[row].id = listTable.readCell(row + 1, 0).toInt();
             tickerList[row].symbol = listTable.readCell(row + 1, 1);
             tickerList[row].disc = listTable.readCell(row + 1, 2);
-            ESP_LOGV(myTAG, "%d, %s, %s\n", tickerList[row].id, tickerList[row].symbol.c_str(), tickerList[row].disc.c_str());
+            ESP_LOGV(myTAG, "%d, %s, %s", tickerList[row].id, tickerList[row].symbol.c_str(), tickerList[row].disc.c_str());
         }
         xSemaphoreGive(TickListmutex);
     }
@@ -139,19 +145,27 @@ void loadTickers(void)
     xSemaphoreGive(SDmutex);
 }
 
-// Function to update tickerList and synce csv files on SD card
-void tickerListUpdate(void)
+// Function to synce csv files on SD card with ticker list
+void dataDirUpdate(void)
 {
     loadTickers();
     xSemaphoreTake(SDmutex, portMAX_DELAY);
-    File dir = SD.open("/data");
+
+    // check if data directory exists and create it if not
+    if (!SD.exists(DATA_DIRECTORY))
+    {
+        Serial.println("Data files directory does not exist. Creating it now.");
+        SD.mkdir(DATA_DIRECTORY);
+    }
+    // open the data directory
+    File dir = SD.open(DATA_DIRECTORY);
     if (!dir)
     {
-        ESP_LOGE(myTAG, "Could not open /data directory.");
         xSemaphoreGive(SDmutex);
+        ESP_LOGE(myTAG, "Could not open %s directory.", DATA_DIRECTORY);
         return;
     }
-    // check if files exist in ticker list
+    // check if files exist for tickers not in ticker list and delete them
     xSemaphoreTake(TickListmutex, portMAX_DELAY);
     while (File entry = dir.openNextFile())
     {
@@ -173,7 +187,7 @@ void tickerListUpdate(void)
         if (!found)
         {
             ESP_LOGI(myTAG, "Deleting file: %s", filename);
-            SD.remove("/data/" + filename);
+            SD.remove(DATA_DIRECTORY + "/" + filename);
         }
     }
     dir.rewindDirectory();
@@ -201,10 +215,10 @@ void tickerListUpdate(void)
             // If no CSV file exists for this symbol, call getData()
             ESP_LOGI(myTAG, "No CSV found for symbol: %s", tickerList[i].symbol);
             String csvData = "";
-            csvData = getHistoricData(tickerList[i].symbol, priceHistLen);
+            csvData = getHistoricData(i, priceHistLen);
             if (csvData != "")
             {
-                File file = SD.open("/data/" + tickerList[i].symbol + ".csv", FILE_WRITE);
+                File file = SD.open(DATA_DIRECTORY + "/" + tickerList[i].symbol + ".csv", FILE_WRITE);
                 if (!file)
                 {
                     ESP_LOGW(myTAG, "Failed to open file for writing");
@@ -214,10 +228,10 @@ void tickerListUpdate(void)
                     // Write the received CSV data to the file
                     file.print(csvData);
                     file.close();
-                    ESP_LOGI(myTAG, "Data saved to /data/%s.csv", tickerList[i].symbol);
+                    ESP_LOGI(myTAG, "Data saved to %s/%s.csv", DATA_DIRECTORY, tickerList[i].symbol);
                 }
             }
-            vTaskDelay(5000); // Delay to avoid sending too many requests at once
+            vTaskDelay(SC_Request_Delay); // Delay to avoid sending too many requests at once
         }
     }
     dir.close();
@@ -226,7 +240,7 @@ void tickerListUpdate(void)
 }
 
 // Function to calculate the date N days ago in YYYYMMDD format
-String getStartDate(int length)
+String getStartDate(const int length)
 {
     // Get the current time
     time_t now;
@@ -249,24 +263,34 @@ String getStartDate(int length)
 }
 
 // Function to get price data from StockCharts.com and save to CSV file
-String getHistoricData(const String symbol, int length)
+String getHistoricData(const int tickerNum, const int length)
 {
+    bool success = false;
+    String symbol = tickerList[tickerNum].symbol;
     ESP_LOGV(myTAG, "Downloading data for %s, length = %d", symbol, length);
     String csvData = "";
-    for (int j = 0; j < 5; j++)
+    for (int j = 0; j < 2; j++)
     {
         if (j > 0)
         {
             ESP_LOGW(myTAG, "Attempt %d failed to get todays price for %s", j, symbol);
-            ESP_LOGD(myTAG, "Waiting %ds before retry...", 10 * j);
+            ESP_LOGD(myTAG, "Waiting %ds before retry...", SC_Request_Delay * j / 1000);
         }
-        vTaskDelay(10000 * j);
+        vTaskDelay(SC_Request_Delay * j);
         WiFiClientSecure client;
         client.setInsecure();
         client.setTimeout(30);
         if (!client.connect(scURLBase, 443))
         {
-            ESP_LOGW(myTAG, "StockCharts connection failed!");
+            char err_buf[100];
+            if (client.lastError(err_buf, 100) < 0)
+            {
+                ESP_LOGW(myTAG, "SC connect failed: %s", err_buf);
+            }
+            else
+            {
+                ESP_LOGW(myTAG, "SC connection error");
+            }
             client.stop();
             continue;
         }
@@ -320,8 +344,8 @@ String getHistoricData(const String symbol, int length)
 
         // Create a filter to extract the desired fields
         JsonDocument filter;
-        filter["history"]["intervals"][0]["end"]["time"] = true;
-        filter["history"]["intervals"][0]["close"] = true;
+        filter["intervals"][0]["end"]["time"] = true;
+        filter["intervals"][0]["close"] = true;
         // Parse the JSON response
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, client, DeserializationOption::Filter(filter));
@@ -338,49 +362,64 @@ String getHistoricData(const String symbol, int length)
 
         // parse data to CSV
         csvData += "Date,Close\n";
-        JsonArray intervals = doc["history"]["intervals"];
+        JsonArray intervals = doc["intervals"];
         for (JsonObject interval : intervals)
         {
             csvData += interval["end"]["time"].as<String>().substring(0, 10) + "," + interval["close"].as<String>() + "\n";
         }
+        success = true;
         // Serial.println("CSV Data:");
         // Serial.println(csvData);
         break;
     }
-    if (csvData == "")
+    if (!success)
     {
+        tickerList[tickerNum].csvRetry = true;
         ESP_LOGW(myTAG, "Failed to get historic data for %s", symbol);
-        faildCount++;
-        if (faildCount >= 3)
+        failCount++;
+        if (failCount > FAIL_COUNT_LIMIT)
         {
             ESP_LOGE(myTAG, "Too many failed attempts to get data. Rebooting...");
             reboot();
         }
         return "";
     }
+    else
+    {
+        tickerList[tickerNum].csvRetry = false;
+    }
 
     return csvData;
 }
 
 // Function to get todays price data from StockCharts.com
-void getTodayData(int tickerNum)
+void getTodayData(const int tickerNum)
 {
+    bool success = false;
     xSemaphoreTake(TickListmutex, portMAX_DELAY);
     ESP_LOGV(myTAG, "Getting todays price for %s", tickerList[tickerNum].symbol);
-    for (int j = 0; j < 5; j++)
+    for (int j = 0; j < 2; j++)
     {
         if (j > 0)
         {
             ESP_LOGW(myTAG, "Attempt %d to get todays price for %s failed", j + 1, tickerList[tickerNum].symbol);
-            ESP_LOGD(myTAG, "Waiting %ds before retry...", 10 * j);
+            ESP_LOGD(myTAG, "Waiting %ds before retry...", SC_Request_Delay * j / 1000);
         }
-        vTaskDelay(10000 * j);
+        vTaskDelay(SC_Request_Delay * j);
         WiFiClientSecure client;
         client.setInsecure();
         client.setTimeout(30);
         if (!client.connect(scURLBase, 443))
         {
-            ESP_LOGW(myTAG, "StockCharts connection failed!");
+            char err_buf[100];
+            if (client.lastError(err_buf, 100) < 0)
+            {
+                ESP_LOGW(myTAG, "SC connect failed: %s", err_buf);
+            }
+            else
+            {
+                ESP_LOGW(myTAG, "SC connection error");
+            }
             client.stop();
             continue;
         }
@@ -457,22 +496,32 @@ void getTodayData(int tickerNum)
             tickerList[tickerNum].price = todaysClose;
             tickerList[tickerNum].change = todaysClose - CloseYesterday;
             tickerList[tickerNum].changePct = (tickerList[tickerNum].change / CloseYesterday) * 100;
-            ESP_LOGD(myTAG, "Ticker: %s, Price: %.2f, Change: %.2f, ChangePct: %.2f%%\n", tickerList[tickerNum].symbol.c_str(), tickerList[tickerNum].price, tickerList[tickerNum].change, tickerList[tickerNum].changePct);
+            ESP_LOGD(myTAG, "Ticker: %s, Price: %.2f, Change: %.2f, ChangePct: %.2f%%", tickerList[tickerNum].symbol.c_str(), tickerList[tickerNum].price, tickerList[tickerNum].change, tickerList[tickerNum].changePct);
+            success = true;
         }
         else
         {
-            ESP_LOGW(myTAG, "Failed to get todays price for %s", tickerList[tickerNum].symbol);
-            faildCount++;
-            if (faildCount >= 3)
-            {
-                ESP_LOGE(myTAG, "Too many failed attempts to get data. Rebooting...");
-                reboot();
-            }
             continue;
         }
         break;
     }
     xSemaphoreGive(TickListmutex);
+
+    if (!success)
+    {
+        tickerList[tickerNum].curPricRetry = true;
+        ESP_LOGW(myTAG, "Failed to get todays price for %s", tickerList[tickerNum].symbol);
+        failCount++;
+        if (failCount > FAIL_COUNT_LIMIT)
+        {
+            ESP_LOGE(myTAG, "Too many failed attempts to get data. Rebooting...");
+            reboot();
+        }
+    }
+    else
+    {
+        tickerList[tickerNum].curPricRetry = false;
+    }
 }
 
 // Function to check if market is open
@@ -505,14 +554,14 @@ void isMarketOpen(void)
         }
         else if (h == 23 && !gotNightlyCheck)
         {
-            faildCount = 0;
+            failCount = 0;
             for (int i = 0; i < numTickers; i++)
             {
                 if (!isCsvFileDataUpToDate(tickerList[i].symbol))
                 {
                     ESP_LOGI(myTAG, "%s.csv is outdated. Updating now...", tickerList[i].symbol);
                     updateCsvFile(i);
-                    vTaskDelay(5000);
+                    vTaskDelay(SC_Request_Delay);
                 }
             }
             gotNightlyCheck = true;
@@ -535,7 +584,7 @@ void updateAllCsvFiles(void)
     for (int i = 0; i < numTickers; i++)
     {
         updateCsvFile(i);
-        vTaskDelay(5000); // Delay to avoid sending too many requests
+        vTaskDelay(SC_Request_Delay); // Delay to avoid sending too many requests
     }
 }
 
@@ -543,14 +592,17 @@ void updateAllCsvFiles(void)
 bool updateCsvFile(const int tickerIndex)
 {
     bool success = false;
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
+
     xSemaphoreTake(TickListmutex, portMAX_DELAY);
+    String symbol = tickerList[tickerIndex].symbol;
+    xSemaphoreGive(TickListmutex);
+
     String csvData = "";
-    ESP_LOGD(myTAG, "Updating %s.csv l=&d", tickerList[tickerIndex].symbol, priceHistLen);
-    csvData = getHistoricData(tickerList[tickerIndex].symbol, priceHistLen);
+    ESP_LOGD(myTAG, "Updating %s.csv l=%d", symbol, priceHistLen);
+    csvData = getHistoricData(tickerIndex, priceHistLen);
     if (csvData != "")
     {
-        File file = SD.open("/data/" + tickerList[tickerIndex].symbol + ".csv", FILE_WRITE);
+        File file = SD.open(DATA_DIRECTORY + "/" + symbol + ".csv", FILE_WRITE);
         if (!file)
         {
             ESP_LOGI(myTAG, "Failed to open file for writing");
@@ -560,20 +612,18 @@ bool updateCsvFile(const int tickerIndex)
             // Write the received CSV data to the file
             file.print(csvData);
             file.close();
-            ESP_LOGD(myTAG, "Data saved to /data/%s.csv", tickerList[tickerIndex].symbol);
+            ESP_LOGD(myTAG, "Data saved to %s/%s.csv", DATA_DIRECTORY, symbol);
             success = true;
         }
     }
-    xSemaphoreGive(SDmutex);
-    xSemaphoreGive(TickListmutex);
+
     return success;
 }
 
 // Function to check if CSV data files are up todate
-bool isCsvFileDataUpToDate(const String symbol)
+bool isCsvFileDataUpToDate(const String &symbol)
 {
-    xSemaphoreTake(SDmutex, portMAX_DELAY);
-    MyTable table("/data/" + symbol + ".csv");
+    MyTable table(DATA_DIRECTORY + "/" + symbol + ".csv");
     bool dataUpToDate = false;
     int rows = 0;
     rows = table.countRows();
@@ -598,6 +648,25 @@ bool isCsvFileDataUpToDate(const String symbol)
         }
     }
 
-    xSemaphoreGive(SDmutex);
     return dataUpToDate;
+}
+
+// function to check for any retry flags in tickerList and retry getting data
+void checkRetryFlags(void)
+{
+    for (int i = 0; i < numTickers; i++)
+    {
+        if (tickerList[i].curPricRetry)
+        {
+            ESP_LOGW(myTAG, "[Out of norm] Retrying to get price for %s", tickerList[i].symbol);
+            getTodayData(i);
+            vTaskDelay(SC_Request_Delay);
+        }
+        if (tickerList[i].csvRetry)
+        {
+            ESP_LOGW(myTAG, "[Out of norm] Retrying to update %s.csv", tickerList[i].symbol);
+            updateCsvFile(i);
+            vTaskDelay(SC_Request_Delay);
+        }
+    }
 }
