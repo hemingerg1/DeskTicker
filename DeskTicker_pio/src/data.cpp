@@ -53,7 +53,7 @@ void dataTask(void *parameters)
     {
         if (!isCsvFileDataUpToDate(tickerList[i].symbol))
         {
-            ESP_LOGD(myTAG, "%s.csv is outdated. Updating now...", tickerList[i].symbol);
+            ESP_LOGI(myTAG, "%s.csv is outdated. Updating now...", tickerList[i].symbol);
             updateCsvFile(i);
             vTaskDelay(SC_Request_Delay);
         }
@@ -135,6 +135,9 @@ void loadTickers(void)
             tickerList[row].symbol = listTable.readCell(row + 1, 1);
             tickerList[row].disc = listTable.readCell(row + 1, 2);
             ESP_LOGV(myTAG, "%d, %s, %s", tickerList[row].id, tickerList[row].symbol.c_str(), tickerList[row].disc.c_str());
+            tickerList[row].csvRetry = false;
+            tickerList[row].curPricRetry = false;
+            tickerList[row].RetryCount = 0;
         }
         xSemaphoreGive(TickListmutex);
     }
@@ -384,10 +387,6 @@ String getHistoricData(const int tickerNum, const int length)
         }
         return "";
     }
-    else
-    {
-        tickerList[tickerNum].csvRetry = false;
-    }
 
     return csvData;
 }
@@ -605,14 +604,14 @@ bool updateCsvFile(const int tickerIndex)
         File file = SD.open(DATA_DIRECTORY + "/" + symbol + ".csv", FILE_WRITE);
         if (!file)
         {
-            ESP_LOGI(myTAG, "Failed to open file for writing");
+            ESP_LOGW(myTAG, "Failed to open %s/%s.csv for writing", DATA_DIRECTORY, symbol);
         }
         else
         {
             // Write the received CSV data to the file
             file.print(csvData);
             file.close();
-            ESP_LOGD(myTAG, "Data saved to %s/%s.csv", DATA_DIRECTORY, symbol);
+            ESP_LOGI(myTAG, "Data successfully saved to %s/%s.csv", DATA_DIRECTORY, symbol);
             success = true;
         }
     }
@@ -654,19 +653,37 @@ bool isCsvFileDataUpToDate(const String &symbol)
 // function to check for any retry flags in tickerList and retry getting data
 void checkRetryFlags(void)
 {
+    // Check all tickers
     for (int i = 0; i < numTickers; i++)
     {
-        if (tickerList[i].curPricRetry)
+        // If ticker retry fails more than 3 times, only retry every 10th time
+        if (tickerList[i].RetryCount < 3 || tickerList[i].RetryCount % 10 == 0)
         {
-            ESP_LOGW(myTAG, "[Out of norm] Retrying to get price for %s", tickerList[i].symbol);
-            getTodayData(i);
-            vTaskDelay(SC_Request_Delay);
+            if (tickerList[i].curPricRetry)
+            {
+                ESP_LOGW(myTAG, "[Out of norm] Retrying to get current price for %s", tickerList[i].symbol);
+                getTodayData(i);
+                vTaskDelay(SC_Request_Delay);
+            }
+
+            if (tickerList[i].csvRetry)
+            {
+                ESP_LOGW(myTAG, "[Out of norm] Retrying to update %s.csv", tickerList[i].symbol);
+                if (updateCsvFile(i))
+                {
+                    tickerList[i].csvRetry = false;
+                    tickerList[i].RetryCount = 0;
+                }
+                else
+                {
+                    tickerList[i].RetryCount++;
+                }
+                vTaskDelay(SC_Request_Delay);
+            }
         }
-        if (tickerList[i].csvRetry)
+        else
         {
-            ESP_LOGW(myTAG, "[Out of norm] Retrying to update %s.csv", tickerList[i].symbol);
-            updateCsvFile(i);
-            vTaskDelay(SC_Request_Delay);
+            tickerList[i].RetryCount++;
         }
     }
 }

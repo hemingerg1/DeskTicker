@@ -102,10 +102,12 @@ void uiTask(void *parameters)
 /*************************  Helper Functions  **************************/
 /***********************************************************************/
 // function to update the main screen
-void updateHomeScreen(const ticker &tic)
+void updateHomeScreen(ticker &tic)
 {
     if (tic.symbol != "")
     {
+        xSemaphoreTake(TickListmutex, portMAX_DELAY);
+
         lv_label_set_text_fmt(ui_labSYMBOL, "%s", tic.symbol.c_str());
         lv_label_set_text_fmt(ui_labDESC, "%s", tic.disc.c_str());
         lv_label_set_text_fmt(ui_labPERCENT, "%.2f%%", tic.changePct);
@@ -130,11 +132,13 @@ void updateHomeScreen(const ticker &tic)
             ui_object_set_themeable_style_property(ui_labPERCENT, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_defText);
             lv_chart_set_series_color(ui_Chart1, ui_Chart1_series_1, lv_color_hex(0x808080));
         }
+
+        xSemaphoreGive(TickListmutex);
     }
 }
 
 // function to update the chart
-void updateChart(const ticker &tic)
+void updateChart(ticker &tic)
 {
     // get data from SD card
     xSemaphoreTake(SDmutex, 5000);
@@ -183,6 +187,7 @@ void updateChart(const ticker &tic)
         {
             lv_label_set_text_fmt(ui_labOldDataDate, "Last Date: %s", enddt.c_str());
             lv_obj_remove_flag(ui_panOldData, LV_OBJ_FLAG_HIDDEN);
+            tic.csvRetry = true;
         }
         else
         {
@@ -265,7 +270,16 @@ bool isDateOlderThan3Days(const String &dateString)
 
     // Convert seconds to days and check if greater than 3 days
     double daysDifference = differenceInSeconds / (60 * 60 * 24);
-    return daysDifference > 3;
+
+    // if Sunday or Monday allow older data
+    if (rtc.getDayofWeek() <= 1)
+    {
+        return daysDifference > 4;
+    }
+    else
+    {
+        return daysDifference > 2;
+    }
 }
 
 // callback function to format the chart y-axis labels

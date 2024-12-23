@@ -68,6 +68,7 @@ struct ticker
     float changePct;
     bool curPricRetry;
     bool csvRetry;
+    uint RetryCount;
 
     String describeTicker()
     {
