@@ -592,9 +592,7 @@ bool updateCsvFile(const int tickerIndex)
 {
     bool success = false;
 
-    xSemaphoreTake(TickListmutex, portMAX_DELAY);
     String symbol = tickerList[tickerIndex].symbol;
-    xSemaphoreGive(TickListmutex);
 
     String csvData = "";
     ESP_LOGD(myTAG, "Updating %s.csv l=%d", symbol, priceHistLen);

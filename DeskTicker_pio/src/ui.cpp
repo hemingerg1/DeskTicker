@@ -102,12 +102,10 @@ void uiTask(void *parameters)
 /*************************  Helper Functions  **************************/
 /***********************************************************************/
 // function to update the main screen
-void updateHomeScreen(ticker &tic)
+void updateHomeScreen(ticker tic)
 {
     if (tic.symbol != "")
     {
-        xSemaphoreTake(TickListmutex, portMAX_DELAY);
-
         lv_label_set_text_fmt(ui_labSYMBOL, "%s", tic.symbol.c_str());
         lv_label_set_text_fmt(ui_labDESC, "%s", tic.disc.c_str());
         lv_label_set_text_fmt(ui_labPERCENT, "%.2f%%", tic.changePct);
@@ -132,13 +130,11 @@ void updateHomeScreen(ticker &tic)
             ui_object_set_themeable_style_property(ui_labPERCENT, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_defText);
             lv_chart_set_series_color(ui_Chart1, ui_Chart1_series_1, lv_color_hex(0x808080));
         }
-
-        xSemaphoreGive(TickListmutex);
     }
 }
 
 // function to update the chart
-void updateChart(ticker &tic)
+void updateChart(ticker tic)
 {
     // get data from SD card
     xSemaphoreTake(SDmutex, 5000);
@@ -222,8 +218,8 @@ void updateChart(ticker &tic)
         // int mean = (data_min + data_max) / 2;
         int soft_min = data_min * 0.98;
         int soft_max = data_max * 1.02;
-        uint cmax = max(data_max + 200, soft_max);
-        uint cmin = min(data_min - 500, soft_min);
+        int cmax = max(data_max + 200, soft_max);
+        int cmin = min(data_min - 500, soft_min);
         cmax = ((cmax + 99) / 100) * 100; // round up to nearest 100
         cmin = ((cmin - 99) / 100) * 100; // round down to nearest 100
         lv_chart_set_range(ui_Chart1, LV_CHART_AXIS_SECONDARY_Y, cmin, cmax);
@@ -237,7 +233,7 @@ void updateChart(ticker &tic)
     }
 }
 
-// Function to check if a given date is older than 3 days
+// Function to check if a given date is older than n days
 bool isDateOlderThan3Days(const String &dateString)
 {
     struct tm inputDate = {0};
@@ -300,9 +296,9 @@ static void draw_event_cb(lv_event_t *e)
 
             /*Malloc the text and set text_local as 1 to make LVGL automatically free the text.
              * (Local texts are malloc'd internally by LVGL. Mimic this behavior here too)*/
-            char tmp_buffer[20] = {0}; /* Big enough buffer */
-            float val = (float)base_dsc->id2 / 100.0;
-            if (val > 100)
+            char tmp_buffer[20] = {0};              /* Big enough buffer */
+            float val = (int)base_dsc->id2 / 100.0; // need to cast id2 to int to correct negative values
+            if (val > 100 || val < -100)
             {
                 lv_snprintf(tmp_buffer, sizeof(tmp_buffer), "%d", int(val));
             }
