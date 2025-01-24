@@ -49,6 +49,9 @@ void uiTask(void *parameters)
     uint tickerNum = 0;
     ulong cdr = 0;
 
+    // load list of tickers from SD card
+    loadTickers();
+
     // delay to let wificon() try to retreive wifi credentials from NVS
     vTaskDelay(1000);
 

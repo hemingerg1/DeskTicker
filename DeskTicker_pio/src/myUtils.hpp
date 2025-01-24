@@ -75,8 +75,7 @@ struct ticker
         return String(id) + "," + symbol + "," + disc;
     }
 } extern tickerList[];
-
-#endif
+void loadTickers(void);
 
 /***********************************************************************/
 /*****************************  Logging Utils  *************************/
@@ -89,5 +88,7 @@ extern char logBuf[];
 
 void logFilesInit();
 int handleNewLogMessage(const char *format, va_list args);
-void saveLogToSD();
+bool saveLogToSD();
 void createNewLogFile();
+
+#endif

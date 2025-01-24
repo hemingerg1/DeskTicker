@@ -21,7 +21,6 @@
 static const char *myTAG = "data.cpp";
 
 static const String DATA_DIRECTORY = "/data";
-MyTable listTable(tickerListFilePath);
 
 ushort updateInterval = 5; // in minutes
 bool eodUpdate = false;
@@ -39,14 +38,16 @@ const char *userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gec
 /***********************************************************************/
 void dataTask(void *parameters)
 {
-    // Serial.println("Starting dataTask");
-
     // check if the market is open
     isMarketOpen();
 
     unsigned long lastUpdate = 0;
 
-    loadTickers();
+    // ticker list should be loaded by UI task first, if not load it now
+    if (numTickers == 0)
+    {
+        loadTickers();
+    }
 
     // check if csv files are up to date and get todays price
     for (int i = 0; i < numTickers; i++)
@@ -118,35 +119,6 @@ void dataTask(void *parameters)
 /***********************************************************************/
 /*************************  Helper Functions  **************************/
 /***********************************************************************/
-
-// function to load tickerList from SD card csv file
-void loadTickers(void)
-{
-    xSemaphoreTake(SDmutex, 10000);
-    if (listTable.countCols() == tickerListColNum)
-    {
-        numTickers = listTable.countRows() - 1;
-        ESP_LOGV(myTAG, "Number of Tickers: %d", numTickers);
-        xSemaphoreTake(TickListmutex, portMAX_DELAY);
-        ESP_LOGV(myTAG, "Ticker List:");
-        for (int row = 0; row < numTickers; row++)
-        {
-            tickerList[row].id = listTable.readCell(row + 1, 0).toInt();
-            tickerList[row].symbol = listTable.readCell(row + 1, 1);
-            tickerList[row].disc = listTable.readCell(row + 1, 2);
-            ESP_LOGV(myTAG, "%d, %s, %s", tickerList[row].id, tickerList[row].symbol.c_str(), tickerList[row].disc.c_str());
-            tickerList[row].csvRetry = false;
-            tickerList[row].curPricRetry = false;
-            tickerList[row].RetryCount = 0;
-        }
-        xSemaphoreGive(TickListmutex);
-    }
-    else
-    {
-        ESP_LOGE(myTAG, "ERROR: Ticker list CSV file was not parsed correctly.");
-    }
-    xSemaphoreGive(SDmutex);
-}
 
 // Function to synce csv files on SD card with ticker list
 void dataDirUpdate(void)
@@ -632,12 +604,24 @@ bool isCsvFileDataUpToDate(const String &symbol)
         int month = lastDate.substring(5, 7).toInt();
         int day = lastDate.substring(8, 10).toInt();
         ESP_LOGD(myTAG, "Last date in %s.csv: %d/%d", symbol, month, day);
-        if (month == rtc.getMonth() + 1 && day == rtc.getDay())
+        // if current month
+        if (month == rtc.getMonth() + 1)
         {
-            dataUpToDate = true;
+            // if current day
+            if (day == rtc.getDay())
+            {
+                dataUpToDate = true;
+            }
+            // if data is from yesterday and market is open (to prevent trying to update end of day only data)
+            else if (abs(rtc.getDay() - day) < 2 && marketOpen)
+            {
+                dataUpToDate = true;
+            }
         }
-        else if (rtc.getDayofWeek() == 0 || rtc.getDayofWeek() == 6) // if it is a weekend
+        // if it is a weekend
+        else if (rtc.getDayofWeek() == 0 || rtc.getDayofWeek() == 6)
         {
+            // if data is from last friday
             if (abs(rtc.getDay() - day) < 3 || rtc.getDay() <= 2)
             {
                 dataUpToDate = true;

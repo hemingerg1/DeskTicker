@@ -14,7 +14,7 @@ void dataTask(void *parameters);
 /***********************************************************************/
 /*************************  Helper Functions  **************************/
 /***********************************************************************/
-void loadTickers(void);
+
 void dataDirUpdate(void);
 String getStartDate(const int length);
 String getHistoricData(const int tickerNum, const int length);

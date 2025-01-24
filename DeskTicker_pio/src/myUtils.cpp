@@ -7,6 +7,7 @@
 #include <FS.h>
 #include <SD.h>
 #include <Preferences.h>
+#include <DatabaseOnSD.h>
 
 #include "uiFiles/ui.h"
 
@@ -273,6 +274,34 @@ ushort numTickers = 0;
 bool marketOpen = false;
 ticker tickerList[maxTickers];
 
+// function to load tickerList from SD card csv file
+void loadTickers(void)
+{
+    MyTable listTable(tickerListFilePath);
+    if (listTable.countCols() == tickerListColNum)
+    {
+        numTickers = listTable.countRows() - 1;
+        ESP_LOGV(myTAG, "Number of Tickers: %d", numTickers);
+        xSemaphoreTake(TickListmutex, portMAX_DELAY);
+        ESP_LOGV(myTAG, "Ticker List:");
+        for (int row = 0; row < numTickers; row++)
+        {
+            tickerList[row].id = listTable.readCell(row + 1, 0).toInt();
+            tickerList[row].symbol = listTable.readCell(row + 1, 1);
+            tickerList[row].disc = listTable.readCell(row + 1, 2);
+            ESP_LOGV(myTAG, "%d, %s, %s", tickerList[row].id, tickerList[row].symbol.c_str(), tickerList[row].disc.c_str());
+            tickerList[row].csvRetry = false;
+            tickerList[row].curPricRetry = false;
+            tickerList[row].RetryCount = 0;
+        }
+        xSemaphoreGive(TickListmutex);
+    }
+    else
+    {
+        ESP_LOGE(myTAG, "ERROR: Ticker list CSV file was not parsed correctly.");
+    }
+}
+
 /***********************************************************************/
 /*****************************  Logging Utils  *************************/
 /***********************************************************************/
@@ -280,7 +309,7 @@ SemaphoreHandle_t logmutex;
 ushort logFileNum = 0;
 bool needNewLogFile = false;
 const char *logFileDir = "/logs";
-char logTempBuf[256] = "";
+
 const size_t logBuf_size = 1024;
 char logBuf[logBuf_size];
 
@@ -314,6 +343,7 @@ void logFilesInit()
 // function to add log message to buffer
 int handleNewLogMessage(const char *format, va_list args)
 {
+    char logTempBuf[256] = "";
     // format message in a temp buffer
     int ret = vsnprintf(logTempBuf, sizeof(logTempBuf), format, args);
     Serial.print(logTempBuf);
@@ -328,7 +358,12 @@ int handleNewLogMessage(const char *format, va_list args)
         if (currentLength + messageLength + 1 >= logBuf_size)
         {
             Serial.println("Saving log buffer to file.");
-            saveLogToSD();
+            if (!saveLogToSD())
+            {
+                Serial.println("Failed to save log buffer to file. Rebooting now.");
+                delay(2000);
+                ESP.restart();
+            }
             currentLength = strlen(logBuf);
         }
         // Append the formatted message to the buffer
@@ -341,21 +376,19 @@ int handleNewLogMessage(const char *format, va_list args)
         Serial.println("Failed to take log mutex. Above message not saved");
     }
 
-    // reset the temp buffer
-    logTempBuf[0] = '\0';
 
     return ret;
 }
 
-// function to save log buffer to sd card then empty buffer
-void saveLogToSD()
+// function to save log buffer to sd card then empty buffer. Return true if successful
+bool saveLogToSD()
 {
     // Write buffer to file
     File file = SD.open(String(logFileDir) + "/" + String(logFileNum) + ".txt", FILE_APPEND);
     if (!file)
     {
         Serial.println("Failed to open log file for writing");
-        return;
+        return false;
     }
     file.print(logBuf);
     file.printf("Buffer Saved: %s\n", rtc.getTime("%D %T").c_str());
@@ -370,6 +403,8 @@ void saveLogToSD()
 
     // reset the buffer
     logBuf[0] = '\0';
+
+    return true;
 }
 
 // function to create a new log file
