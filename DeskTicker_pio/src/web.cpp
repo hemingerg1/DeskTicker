@@ -58,10 +58,7 @@ void webTask(void *parameters)
 
     ESP_LOGI(myTAG, "**** Webserver started at <http://%s> or <http://%s> ****", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
-    while (1)
-    {
-        vTaskDelay(2000);
-    }
+    vTaskDelete(NULL);
 }
 
 /***********************************************************************/
@@ -158,7 +155,9 @@ void handleSysInfo(AsyncWebServerRequest *request)
 
     result += "  \"uiTask HighWater\": " + String(uxTaskGetStackHighWaterMark(uiTaskHandle)) + ",\n";
     result += "  \"dataTask HighWater\": " + String(uxTaskGetStackHighWaterMark(dataTaskHandle)) + ",\n";
-    result += "  \"webTask HighWater\": " + String(uxTaskGetStackHighWaterMark(webTaskHandle)) + ",\n\n";
+    // result += "  \"webTask HighWater\": " + String(uxTaskGetStackHighWaterMark(webTaskHandle)) + ",\n";
+    result += "  \"sysTask HighWater\": " + String(uxTaskGetStackHighWaterMark(sysTaskHandle)) + ",\n";
+    result += "  \"loopTask HighWater\": " + String(uxTaskGetStackHighWaterMark(loopTaskHandle)) + ",\n\n";
 
     result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
     result += "  \"minimumFreeHeap\": " + String(ESP.getMinFreeHeap()) + ",\n\n";

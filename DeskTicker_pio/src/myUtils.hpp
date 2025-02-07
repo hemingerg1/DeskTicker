@@ -18,6 +18,8 @@
 extern TaskHandle_t uiTaskHandle;
 extern TaskHandle_t dataTaskHandle;
 extern TaskHandle_t webTaskHandle;
+extern TaskHandle_t sysTaskHandle;
+extern TaskHandle_t loopTaskHandle;
 
 extern TimerHandle_t timeoutTimer;
 

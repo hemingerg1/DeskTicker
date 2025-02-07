@@ -13,7 +13,9 @@
 
 #define PRINT_HIGHWATER false
 
-SET_LOOP_TASK_STACK_SIZE(3200);
+SET_LOOP_TASK_STACK_SIZE(4096);
+
+void sysTask(void *pvParameters);
 
 void setup()
 {
@@ -71,64 +73,73 @@ void setup()
   // when SD file system fails to mount, code can hang in prefs.begin()
   timeoutTimer = xTimerCreate("Timeout Timer", 6000, pdFALSE, NULL, timeoutReboot);
   xTimerStart(timeoutTimer, 0);
-  // get ui settings for NVS
+  // get ui settings from NVS
   xTaskCreatePinnedToCore(settingsInitTask, "settingsTask", 2000, NULL, 1, NULL, 1);
   vTaskDelay(1000);
 
-  // start ui task
-  xTaskCreatePinnedToCore(uiTask, "uiTask", 7168, NULL, 1, &uiTaskHandle, 1);
+  xTaskCreatePinnedToCore(uiTask, "uiTask", 7168, NULL, 4, &uiTaskHandle, 1);
 
   // start wifi connection
   wificon();
   timeSync(TIMEZONE, "time1.google.com", "time2.google.com");
 
-  // create other other tasks
-  xTaskCreatePinnedToCore(dataTask, "dataTask", 5630, NULL, 1, &dataTaskHandle, 1);
-  xTaskCreatePinnedToCore(webTask, "webTask", 4096, NULL, 1, &webTaskHandle, 1);
+  xTaskCreatePinnedToCore(dataTask, "dataTask", 6144, NULL, 3, &dataTaskHandle, 1);
+  xTaskCreatePinnedToCore(webTask, "webTask", 4096, NULL, 2, &webTaskHandle, 1);
+  xTaskCreatePinnedToCore(sysTask, "sysTask", 4096, NULL, 2, &sysTaskHandle, 1);
 }
 
 void loop()
 {
-  vTaskDelay(5 * 60 * 1000); // run every 5 mins
+  vTaskDelay(1000);
+}
 
-  if (PRINT_HIGHWATER)
+void sysTask(void *pvParameters)
+{
+  while (1)
   {
-    Serial.print("\n-------- High Water Marks --------\n");
-    Serial.println("(minimum free stack space)");
-    Serial.print("uiTask : ");
-    Serial.println(uxTaskGetStackHighWaterMark(uiTaskHandle));
-    Serial.print("dataTask : ");
-    Serial.println(uxTaskGetStackHighWaterMark(dataTaskHandle));
-    Serial.print("webTask : ");
-    Serial.println(uxTaskGetStackHighWaterMark(webTaskHandle));
-    Serial.print("loop: ");
-    Serial.println(uxTaskGetStackHighWaterMark(NULL));
-    Serial.println("----------------------------------");
-    Serial.print("free heap space: ");
-    Serial.println(ESP.getFreeHeap());
-    Serial.print("minimum free heap space: ");
-    Serial.println(ESP.getMinFreeHeap());
-    Serial.println("----------------------------------");
-    Serial.printf("Market Open: %d\n", marketOpen);
-    Serial.println("----------------------------------\n");
-    Serial.flush();
-  }
+    vTaskDelay(5 * 60 * 1000); // run every 5 mins
 
-  // check if it is time to create new log file
-  if (needNewLogFile)
-  {
-    createNewLogFile();
-  }
+    if (PRINT_HIGHWATER)
+    {
+      Serial.print("\n-------- High Water Marks --------\n");
+      Serial.println("(minimum free stack space)");
+      Serial.print("uiTask : ");
+      Serial.println(uxTaskGetStackHighWaterMark(uiTaskHandle));
+      Serial.print("dataTask : ");
+      Serial.println(uxTaskGetStackHighWaterMark(dataTaskHandle));
+      // Serial.print("webTask : ");
+      // Serial.println(uxTaskGetStackHighWaterMark(webTaskHandle));
+      Serial.print("sysTask: ");
+      Serial.println(uxTaskGetStackHighWaterMark(sysTaskHandle));
+      Serial.print("loopTask: ");
+      Serial.println(uxTaskGetStackHighWaterMark(loopTaskHandle));
+      Serial.println("----------------------------------");
+      Serial.print("free heap space: ");
+      Serial.println(ESP.getFreeHeap());
+      Serial.print("minimum free heap space: ");
+      Serial.println(ESP.getMinFreeHeap());
+      Serial.println("----------------------------------");
+      Serial.printf("Market Open: %d\n", marketOpen);
+      Serial.println("----------------------------------\n");
+      Serial.flush();
+    }
 
-  // if there is log messages in buffer save to sd card
-  if (strlen(logBuf) > 128)
-  {
-    saveLogToSD();
-  }
+    // check if it is time to create new log file
+    if (needNewLogFile)
+    {
+      createNewLogFile();
+    }
 
-  // check wifi is still connected
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    wificon();
+    // if there is log messages in buffer save to sd card
+    if (strlen(logBuf) > 128)
+    {
+      saveLogToSD();
+    }
+
+    // check wifi is still connected
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      wificon();
+    }
   }
 }

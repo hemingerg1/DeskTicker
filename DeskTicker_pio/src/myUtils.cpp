@@ -19,6 +19,7 @@ static const char *myTAG = "myUtils.cpp";
 TaskHandle_t uiTaskHandle = NULL;
 TaskHandle_t dataTaskHandle = NULL;
 TaskHandle_t webTaskHandle = NULL;
+TaskHandle_t sysTaskHandle = NULL;
 
 TimerHandle_t timeoutTimer;
 
@@ -375,7 +376,6 @@ int handleNewLogMessage(const char *format, va_list args)
     {
         Serial.println("Failed to take log mutex. Above message not saved");
     }
-
 
     return ret;
 }

@@ -81,6 +81,7 @@ void dataTask(void *parameters)
             updateTickerList = false;
         }
 
+        // historical data length was changed on webpage so update csv files
         if (updateHistLength)
         {
             ESP_LOGD(myTAG, "Updating CSV files with new historic data length");
@@ -112,7 +113,7 @@ void dataTask(void *parameters)
         // check if any data downloads needs to be retried
         checkRetryFlags();
 
-        vTaskDelay(5000);
+        vTaskDelay(15000);
     }
 }
 

@@ -140,7 +140,6 @@ void updateHomeScreen(ticker tic)
 void updateChart(ticker tic)
 {
     // get data from SD card
-    xSemaphoreTake(SDmutex, 5000);
     MyTable table("/data/" + tic.symbol + ".csv");
     bool addToday = false;
     int len = 0;
@@ -179,7 +178,6 @@ void updateChart(ticker tic)
         }
         String startdt = table.readCell(1, 0);
         String enddt = table.readCell(len, 0);
-        xSemaphoreGive(SDmutex);
 
         // check if end date is older than 3 days, if so display a warning
         if (isDateOlderThan3Days(enddt))
@@ -229,10 +227,6 @@ void updateChart(ticker tic)
         lv_scale_set_range(ui_Chart1_Yaxis2, cmin, cmax);
 
         lv_chart_refresh(ui_Chart1);
-    }
-    else
-    {
-        xSemaphoreGive(SDmutex);
     }
 }
 
