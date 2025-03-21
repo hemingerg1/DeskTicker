@@ -321,9 +321,13 @@ void displaySleep()
     {
         adjustTimeout = screenTimeout * 6;
     }
-    else if (rtc.getHour() >= 20 || rtc.getHour() < 8)
+    else if (rtc.getHour() >= 21 || rtc.getHour() < 7)
     {
         adjustTimeout = screenTimeout / 3;
+        if (!screenSleep)
+        {
+            smartdisplay_lcd_set_backlight(0.1);
+        }
     }
 
     if (!screenSleep && inactMin >= adjustTimeout)
